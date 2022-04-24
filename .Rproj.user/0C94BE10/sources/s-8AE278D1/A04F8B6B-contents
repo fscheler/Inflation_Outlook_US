@@ -1,0 +1,129 @@
+
+#Create Chart
+source("C:/FS/Systems/ggplot_functions.R")
+source("C:/FS/quantamental_platform/Publications/Amadeus_Weekly/weekly_functions.R")
+#file.edit("P:/NEWTREE/Amadeus/CSE_PDE_DHO_FSL/3_FSL/RStudio/ggplot_functions.R")
+col_w<-get_w_color()
+col_aq<-get_aq_color()
+col_aq2<-col_aq
+
+library(pool)
+library(ecm)
+library(RMySQL)
+library(lubridate)
+library(zoo)
+lapply(dbListConnections( dbDriver( drv = "MySQL")), dbDisconnect)
+# pool connection
+pool <<- dbPool(
+  drv = RMySQL::MySQL(),
+  dbname = "gaa",
+  #host = "167.99.95.195",
+  host = "172.40.0.17",
+  username = "root",
+  #password = "Amad3usCap1tal2018",
+  password = "AmCap2019*",
+  port=3306
+)
+
+
+dmonthly<-dbGetQuery(pool,"select * from inflation_model_monthly_data")
+ddaily<-dbGetQuery(pool,"select * from inflation_model_daily_data")
+dmonthly$date<-as.Date(dmonthly$date)
+ddaily$date<-as.Date(ddaily$date)
+
+df<-as.data.frame(dmonthly[dmonthly$id=='PCE DEFY Index',c("date","px_last")])
+df$date<-as.Date(as.yearmon(df$date), frac = 1)
+de<-as.data.frame(dmonthly[dmonthly$id=='PCE CYOY Index',c("date","px_last")])
+de$date<-as.Date(as.yearmon(de$date), frac = 1)
+df<-merge(df,de,by="date",all=T)
+de<-as.data.frame(dmonthly[dmonthly$id=='OILPHIST Index',c("date","px_last")])
+de$date<-as.Date(as.yearmon(de$date), frac = 1)
+df<-merge(df,de,by="date",all=T)
+de<-as.data.frame(dmonthly[dmonthly$id=='EUR BGNL Curncy',c("date","px_last")])
+de$date<-as.Date(as.yearmon(de$date), frac = 1)
+df<-merge(df,de,by="date",all=T)
+names(df) <- c("date", "headline", "core", "oil", "fx")
+
+
+last_oil<-tail(as.data.frame(ddaily[ddaily$id=='CL1 COMB Comdty' & !is.na(ddaily$px_last),c("date","px_last")]),1)
+last_oil<-last_oil$px_last
+last_fx<-tail(as.data.frame(ddaily[ddaily$id=='EUR BGNL Curncy' & !is.na(ddaily$px_last),c("date","px_last")]),1)
+last_fx<-last_fx$px_last
+
+
+
+
+df<-subset(df,!is.na(df$headline))
+df<-subset(df,!is.na(df$core))
+
+a<-nrow(df)
+forecast_period<-12
+for(i in 1:forecast_period)
+{df<-rbind(df,tail(df,1))}
+
+last_date<-as.POSIXct(paste(paste(as.numeric(format(df$date[a], "%Y")),as.numeric(format(df$date[a], "%m")),01,sep="-")))
+date_vector<-tail(seq(last_date,by="month",length.out=(forecast_period+2))-1,forecast_period)
+n<-1
+for(i in (a+1):nrow(df))
+{
+  df$date[i]<-date_vector[n]
+  df$headline[i]<-NA
+  df$oil[i]<-last_oil
+  df$fx[i]<-last_fx
+  n<-n+1
+}
+#*****************************************
+#delete df$fx in case of USA
+df$oil_fx_adj<-df$oil
+#*****************************************
+df$oil_yoy<-(df$oil_fx_adj/lagpad(df$oil_fx_adj,k=12)-1)*100
+df$non_core_pce<-df$headline-df$core
+mean_oil<-mean(df$oil_yoy,na.rm=TRUE)
+sd_oil<-sd(df$oil_yoy,na.rm=TRUE)
+mean_non_core_pce<-mean(df$non_core_pce,na.rm=TRUE)
+sd_non_core_pce<-sd(df$non_core_pce,na.rm=TRUE)
+
+df$fnon_core<-((df$oil_yoy-mean_oil)/sd_oil)*sd_non_core_pce+mean_non_core_pce
+df$fheadline<-df$core+df$fnon_core
+
+df$core<-ifelse(is.na(df$headline),NA,df$core)
+
+df_tmp<-df
+
+library(data.table)
+dfl <- melt(setDT(df[,c("date","headline","core","fheadline")]), id.vars = "date")
+dfl$variable<-as.character(dfl$variable)
+mnemonics<-c("headline","core","fheadline")
+captions<-c("Headline","Core","Forecast")
+dfl$name<-ifelse(dfl$variable==mnemonics[1],captions[1],dfl$variable)
+dfl$name<-ifelse(dfl$variable==mnemonics[2],captions[2],dfl$name)
+dfl$name<-ifelse(dfl$variable==mnemonics[3],captions[3],dfl$name)
+library(ggplot2)
+
+col_aq2<-c("#04103b","#dd0400","#3b5171","#D6604D","#4393C3","#BDBDBD","#D9D9D9","#F0F0F0")
+cols <- c("Headline" = col_aq[1],"Core" = col_aq[2],"Forecast"=col_aq[3])
+
+vline <- function(x = 0, color = "red") {
+  list(
+    type = "line", 
+    y0 = min(dfl$value/100,na.rm=T), 
+    y1 = max(dfl$value/100,na.rm=T), 
+    yref = "paper",
+    x0 = Sys.Date(), 
+    x1 = Sys.Date(), 
+    line = list(color = color)
+  )
+}
+
+library(plotly)
+pyus<-
+  plot_ly(dfl,colors=cols)%>%
+  layout(title="U.S. Inflation Outlook",xaxis = list(title=""), yaxis = list(title="",tickformat =".1%"),legend = list(orientation = "h",xanchor = "center",x = 0.5))%>%
+  add_segments(x = Sys.Date(), xend = Sys.Date(), y = min(dfl$value/100,na.rm=T),name="Today", yend = max(dfl$value/100,na.rm=T),line = list(color = col_aq[6],dash = 'dot'),showlegend = T)%>% 
+  add_segments(x = min(dfl$date), xend = max(dfl$date), y = 0.02, yend = 0.02,name="Target",line = list(color = col_aq[6]),showlegend = T)%>% 
+  add_trace(x=~as.Date(date),y=~value/100,color=~name,colors=cols,type="scatter",mode="line")%>%
+  layout(plot_bgcolor='rgb(240, 246, 250)') %>% 
+  layout(paper_bgcolor='rgb(240, 246, 250)')%>% 
+  config(displayModeBar = F)
+
+htmlwidgets::saveWidget(as_widget(pyus), "C:/FS/quantamental_platform/Publications/Inflation_Outlook/Inflation_Outlook_US/index.html",selfcontained = TRUE)
