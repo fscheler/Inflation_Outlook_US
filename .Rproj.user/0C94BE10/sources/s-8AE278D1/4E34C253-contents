@@ -1,0 +1,586 @@
+---
+title: "Inflation Report"
+subtitle: "Forecasts & Market Expectations"
+author: "Amadeus Quantamental"
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+output:
+  pagedreport::paged_windmill:
+    keep_md: true
+    toc: false
+    front_img: "P:/NEWTREE/Amadeus/CSE_PDE_DHO_FSL/3_FSL/Logos/background_long_no_header.svg"
+    back_img: "P:/NEWTREE/Amadeus/CSE_PDE_DHO_FSL/3_FSL/Logos/background_long_no_header.svg"
+    logo: "P:/NEWTREE/Amadeus/CSE_PDE_DHO_FSL/3_FSL/Logos/AMADEUS_logo_quantamental_Pantone_white.svg"
+    img_to_dark: TRUE
+    logo_to_white: FALSE
+knit: pagedown::chrome_print
+toc-title: "Table of Contents"
+main-color: "#121528"
+secondary-color: "#dd0400"
+google-font: true
+common-font: "Raleway"
+top-font: "Mountains of Christmas"
+always_allow_html: yes
+---
+
+
+
+
+```{r setup, include=FALSE}
+#https://pagedown.rbind.io/
+#C:\Users\fscheler\Documents\R\win-library\3.5\pagedreport\resources
+
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(dpi = 300, dev = "svg")
+
+library(pool)
+library(RMySQL)
+library(ggplot2)
+library(gridExtra)
+library(grid)
+library(lattice)
+library(readxl)
+library(Rblpapi)
+library(ecm)
+library(zoo)
+library(Quandl)
+library(knitr)
+library(pagenum)
+library(TTR)
+library(smooth)
+library(timeSeries)
+library(timeSeries)
+#library(utilities)
+library(caTools)
+library(tidyr)
+library(tseries)
+library(forecast)
+library(lubridate)
+library(imager)
+library(roll)
+library(stringr)
+library(data.table)
+
+# pool connection
+pool <<- dbPool(
+  drv = RMySQL::MySQL(),
+  dbname = "fdsl",
+  #host = "167.99.95.195",
+  host = "172.40.0.17",
+  username = "root",
+  #password = "Amad3usCap1tal2018",
+  password = "AmCap2019*",
+  port=3306
+)
+col_aq2_light<-as.character(c("#04103b","#dd0400","#3b5171","#5777a7","#969696","#BDBDBD","#D9D9D9","#F0F0F0"))
+col_aq2_dark<-as.character(c("#121528","#dd0400","#3b5171","#5777a7","#969696","#BDBDBD","#D9D9D9","#F0F0F0"))
+col_aq2<-col_aq2_dark
+
+library()
+source("P:/NEWTREE/Amadeus/CSE_PDE_DHO_FSL/3_FSL/RStudio/ggplot_functions.R")
+
+#file.edit("P:/NEWTREE/Amadeus/CSE_PDE_DHO_FSL/3_FSL/RStudio/ggplot_functions.R")
+col_w<-get_w_color()
+col_aq<-get_aq_color()
+
+```
+
+
+```{r data_load, include=FALSE}
+
+blpConnect()
+
+#Dateneinzug Monthly
+ticker_vektor<-c("PCE DEFY Index","PCE CYOY Index","OILPHIST Index","EUR BGNL Curncy","ECCPEMUY Index","CPEXEMUY Index","CSIIEUR Index","CSIIUSD Index","CSIIG10 Index","CSIIEM Index","CSIICNY Index","CSIIGBP Index")
+opt <- c("periodicitySelection" = "MONTHLY")
+data=bdh(ticker_vektor, c("px_last"), 
+         start.date=as.Date("1997-01-01"),end.date=NULL,
+         include.non.trading.days = TRUE,
+         options = opt
+)
+
+
+
+eco_release_dt=bdh("PCE DEFY Index", c("ECO_RELEASE_DT"), 
+         start.date=as.Date("1997-01-01"),end.date=NULL,
+         include.non.trading.days = TRUE,
+         options = opt
+)
+
+eco_release_dt_ez=bdh("ECCPEMUY Index", c("ECO_RELEASE_DT"), 
+         start.date=as.Date("1997-01-01"),end.date=NULL,
+         include.non.trading.days = TRUE,
+         options = opt
+)
+
+```
+
+# Inflation Forecasts
+The inflation forecasts simulate the development of headline inflation over the coming 12 months based on the current level of core inflation and the oil price base effect given the development of the oil price in the prior year and assuming current oil price level. The US forecast is based on the Personal Consumption Expenditure Index (PCE).
+
+## US Inflation
+
+```{r inflation_forecast_us, echo=FALSE,warning=FALSE,fig.width=6,fig.height=3.4}
+#Headline Inflation Forecast USA
+#Compile Forecast
+#**********************************************************************
+df<-as.data.frame(data$`PCE DEFY Index`)
+df$date<-as.Date(as.yearmon(df$date), frac = 1)
+de<-as.data.frame(data$`PCE CYOY Index`)
+de$date<-as.Date(as.yearmon(de$date), frac = 1)
+df<-merge(df,de,by="date",all=T)
+de<-as.data.frame(data$`OILPHIST Index`)
+de$date<-as.Date(as.yearmon(de$date), frac = 1)
+df<-merge(df,de,by="date",all=T)
+de<-as.data.frame(data$`EUR BGNL Curncy`)
+de$date<-as.Date(as.yearmon(de$date), frac = 1)
+df<-merge(df,de,by="date",all=T)
+names(df) <- c("date", "headline", "core", "oil", "fx")
+
+
+last_oil<-bdp("CL1 COMB Comdty", "px_last")
+last_oil<-last_oil$px_last
+last_fx<-bdp("EUR BGNL Curncy", "px_last")
+last_fx<-last_fx$px_last
+
+df<-subset(df,!is.na(df$headline))
+df<-subset(df,!is.na(df$core))
+
+a<-nrow(df)
+forecast_period<-12
+for(i in 1:forecast_period)
+{df<-rbind(df,tail(df,1))}
+
+last_date<-as.POSIXct(paste(paste(as.numeric(format(df$date[a], "%Y")),as.numeric(format(df$date[a], "%m")),01,sep="-")))
+date_vector<-tail(seq(last_date,by="month",length.out=(forecast_period+2))-1,forecast_period)
+n<-1
+for(i in (a+1):nrow(df))
+{
+  df$date[i]<-date_vector[n]
+  df$headline[i]<-NA
+  df$oil[i]<-last_oil
+  df$fx[i]<-last_fx
+  n<-n+1
+}
+#*****************************************
+#delete df$fx in case of USA
+df$oil_fx_adj<-df$oil
+#*****************************************
+df$oil_yoy<-(df$oil_fx_adj/lagpad(df$oil_fx_adj,k=12)-1)*100
+df$non_core_pce<-df$headline-df$core
+mean_oil<-mean(df$oil_yoy,na.rm=TRUE)
+sd_oil<-sd(df$oil_yoy,na.rm=TRUE)
+mean_non_core_pce<-mean(df$non_core_pce,na.rm=TRUE)
+sd_non_core_pce<-sd(df$non_core_pce,na.rm=TRUE)
+
+df$fnon_core<-((df$oil_yoy-mean_oil)/sd_oil)*sd_non_core_pce+mean_non_core_pce
+df$fheadline<-df$core+df$fnon_core
+
+df$core<-ifelse(is.na(df$headline),NA,df$core)
+
+df_tmp<-df
+#Plot
+#**********************************************************************
+source("P:/NEWTREE/Amadeus/CSE_PDE_DHO_FSL/3_FSL/RStudio/ggplot_functions.R")
+
+#file.edit("P:/NEWTREE/Amadeus/CSE_PDE_DHO_FSL/3_FSL/RStudio/ggplot_functions.R")
+col_w<-get_w_color()
+col_aq<-get_aq_color()
+
+
+library(data.table)
+dfl <- melt(setDT(df[,c("date","headline","core","fheadline")]), id.vars = "date")
+dfl$variable<-as.character(dfl$variable)
+mnemonics<-c("headline","core","fheadline")
+captions<-c("Headline","Core","Forecast")
+dfl$name<-ifelse(dfl$variable==mnemonics[1],captions[1],dfl$variable)
+dfl$name<-ifelse(dfl$variable==mnemonics[2],captions[2],dfl$name)
+dfl$name<-ifelse(dfl$variable==mnemonics[3],captions[3],dfl$name)
+library(ggplot2)
+
+dfl<-dfl[!is.na(dfl$value),]
+cols <- c("Headline" = col_aq[1],"Core" = col_aq[2],"Forecast"=col_aq[3])
+
+
+View(dfl)
+
+p1<-
+  ggplot(data=dfl,aes(x=as.Date(date), y=value,lu=name,color=name))+
+  #add_rec_shade(as.Date(min(df$date)),as.Date(Sys.Date()))+
+  geom_line(size=0.7)+
+  geom_vline(mapping = NULL,xintercept=as.Date(df$date[a]),color="darkgrey",size=0.5)+
+  scale_colour_manual(values = cols)+
+  theme_aq_black(base_size=12)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="US Inflation",subtitle="Amadeus Inflation Forecast",x ="")+
+  labs(caption = 'Source: Bloomberg')+
+  guides(colour = guide_legend(nrow = 1))+
+  theme(legend.position = c(x=0.25, y=-0.15),legend.text=element_text(size=9))+
+  scale_x_date(labels = date_format("%m-%Y"))+
+  ylab("")+
+  #theme(legend.position="none")+
+  theme(plot.margin=margin(5,5,5,5))
+
+p1
+
+
+```
+
+
+```{r inflation_forecast_st, echo=FALSE,warning=FALSE,fig.width=6,fig.height=3.4}
+
+p1<-
+  ggplot(data=dfl[dfl$date>=Sys.Date()-365,],aes(x=as.Date(date), y=value,lu=name,color=name))+
+  #add_rec_shade(as.Date(min(df$date)),as.Date(Sys.Date()))+
+  geom_line(size=0.7)+
+  geom_vline(mapping = NULL,xintercept=as.Date(df$date[a]),color="darkgrey",size=0.5)+
+  scale_colour_manual(values = cols)+
+  theme_aq_black(base_size=12)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="US Inflation",subtitle="Amadeus Inflation Forecast",x ="")+
+  labs(caption = 'Source: Bloomberg')+
+  guides(colour = guide_legend(nrow = 1))+
+  theme(legend.position = c(x=0.25, y=-0.15),legend.text=element_text(size=9))+
+  scale_x_date(labels = date_format("%m-%Y"))+
+  ylab("")+
+  #theme(legend.position="none")+
+  theme(plot.margin=margin(5,5,5,5))
+
+p1
+
+```
+
+
+## Eurozone Inflation
+
+The inflation forecasts simulate the development of headline inflation over the coming 12 months based on the current level of core inflation and the oil price base effect given the development of the oil price in the prior year and assuming current oil price level. The Eurozone forecasts is based on the Harmonised Index of Consumer Prices (HICP).
+
+```{r inflation_forecast_ez, echo=FALSE,warning=FALSE,fig.width=6,fig.height=3.4}
+#Headline Inflation Forecast Eurozone
+#Compile Forecast
+#**********************************************************************
+df<-as.data.frame(data$`ECCPEMUY Index`)
+df$date<-as.Date(as.yearmon(df$date), frac = 1)
+de<-as.data.frame(data$`CPEXEMUY Index`)
+de$date<-as.Date(as.yearmon(de$date), frac = 1)
+df<-merge(df,de,by="date",all=T)
+de<-as.data.frame(data$`OILPHIST Index`)
+de$date<-as.Date(as.yearmon(de$date), frac = 1)
+df<-merge(df,de,by="date",all=T)
+de<-as.data.frame(data$`EUR BGNL Curncy`)
+de$date<-as.Date(as.yearmon(de$date), frac = 1)
+df<-merge(df,de,by="date",all=T)
+names(df) <- c("date", "headline", "core", "oil", "fx")
+
+
+last_oil<-bdp("CL1 COMB Comdty", "px_last")
+last_oil<-last_oil$px_last
+last_fx<-bdp("EUR BGNL Curncy", "px_last")
+last_fx<-last_fx$px_last
+
+df<-subset(df,!is.na(df$headline))
+df<-subset(df,!is.na(df$core))
+
+
+
+
+a<-nrow(df)
+forecast_period<-12
+for(i in 1:forecast_period)
+{df<-rbind(df,tail(df,1))}
+
+last_date<-as.POSIXct(paste(paste(as.numeric(format(df$date[a], "%Y")),as.numeric(format(df$date[a], "%m")),01,sep="-")))
+date_vector<-tail(seq(last_date,by="month",length.out=(forecast_period+2))-1,forecast_period)
+n<-1
+for(i in (a+1):nrow(df))
+{
+  df$date[i]<-date_vector[n]
+  df$headline[i]<-NA
+  df$oil[i]<-last_oil
+  df$fx[i]<-last_fx
+  n<-n+1
+}
+#*****************************************
+#delete df$fx in case of USA
+df$oil_fx_adj<-df$oil/df$fx
+#*****************************************
+df$oil_yoy<-(df$oil_fx_adj/lagpad(df$oil_fx_adj,k=12)-1)*100
+df$non_core_pce<-df$headline-df$core
+mean_oil<-mean(df$oil_yoy,na.rm=TRUE)
+sd_oil<-sd(df$oil_yoy,na.rm=TRUE)
+mean_non_core_pce<-mean(df$non_core_pce,na.rm=TRUE)
+sd_non_core_pce<-sd(df$non_core_pce,na.rm=TRUE)
+
+df$fnon_core<-((df$oil_yoy-mean_oil)/sd_oil)*sd_non_core_pce+mean_non_core_pce
+df$fheadline<-df$core+df$fnon_core
+
+df$core<-ifelse(is.na(df$headline),NA,df$core)
+#**********************************************************************
+
+
+dfl <- melt(setDT(df[,c("date","headline","core","fheadline")]), id.vars = "date")
+
+mnemonics<-c("headline","core","fheadline")
+captions<-c("Headline","Core","Forecast")
+dfl$name<-ifelse(dfl$variable==mnemonics[1],captions[1],dfl$variable)
+dfl$name<-ifelse(dfl$variable==mnemonics[2],captions[2],dfl$name)
+dfl$name<-ifelse(dfl$variable==mnemonics[3],captions[3],dfl$name)
+
+
+
+dfl<-dfl[!is.na(dfl$value),]
+cols <- c("Headline" = col_aq[1],"Core" = col_aq[2],"Forecast"=col_aq[3])
+
+
+p2<-
+  ggplot(data=dfl,aes(x=as.Date(date), y=value,lu=name,color=name))+
+  #add_rec_shade(as.Date(min(df$date)),as.Date(Sys.Date()))+
+  geom_line(size=0.7)+
+  geom_vline(mapping = NULL,xintercept=as.Date(df$date[a]),color="darkgrey",size=0.5)+
+  scale_colour_manual(values = cols)+
+  theme_aq_black(base_size=12)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Eurozone Inflation",subtitle="Amadeus Inflation Forecast",x ="")+
+  labs(caption = 'Source: Bloomberg')+
+  guides(colour = guide_legend(nrow = 1))+
+  theme(legend.position = c(x=0.25, y=-0.15),legend.text=element_text(size=9))+
+  scale_x_date(labels = date_format("%m-%Y"))+
+  ylab("")
+  #theme(legend.position="none")
+  #theme(plot.margin=margin(5,5,5,5))
+
+p2
+
+
+
+```
+
+```{r inflation_forecast_ez_st, echo=FALSE,warning=FALSE,fig.width=6,fig.height=3.4}
+p2<-
+  ggplot(data=dfl[dfl$date>=Sys.Date()-365,],aes(x=as.Date(date), y=value,lu=name,color=name))+
+  #add_rec_shade(as.Date(min(df$date)),as.Date(Sys.Date()))+
+  geom_line(size=0.7)+
+  geom_vline(mapping = NULL,xintercept=as.Date(df$date[a]),color="darkgrey",size=0.5)+
+  scale_colour_manual(values = cols)+
+  theme_aq_black(base_size=12)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Eurozone Inflation",subtitle="Amadeus Inflation Forecast",x ="")+
+  labs(caption = 'Source: Bloomberg')+
+  guides(colour = guide_legend(nrow = 1))+
+  theme(legend.position = c(x=0.25, y=-0.15),legend.text=element_text(size=9))+
+  scale_x_date(labels = date_format("%m-%Y"))+
+  ylab("")
+  #theme(legend.position="none")
+  #theme(plot.margin=margin(5,5,5,5))
+
+p2
+
+```
+
+## Inflation Forecast Comparison
+
+```{r inflation_forecast_comparison, echo=FALSE,warning=FALSE,fig.width=6,fig.height=3.5}
+
+#Plot Comparison
+comp<-merge(subset(df_tmp,select=c(date,fheadline)),subset(df,select=c(date,fheadline)),by="date",all=T)
+
+
+library(data.table)
+dfl <- melt(setDT(comp[,c("date","fheadline.x","fheadline.y")]), id.vars = "date")
+
+mnemonics<-c("fheadline.x","fheadline.y")
+captions<-c("US","Eurozone")
+dfl$name<-ifelse(dfl$variable==mnemonics[1],captions[1],dfl$variable)
+dfl$name<-ifelse(dfl$variable==mnemonics[2],captions[2],dfl$name)
+
+library(ggplot2)
+
+dfl<-dfl[!is.na(dfl$value),]
+cols <- c("US" = col_aq[1],"Eurozone" = col_aq[2])
+
+p3<-
+  ggplot(data=dfl,aes(x=as.Date(date), y=value,lu=name,color=name))+
+  #add_rec_shade(as.Date(min(df$date)),as.Date(Sys.Date()))+
+  geom_line(size=0.7)+
+  geom_vline(mapping = NULL,xintercept=as.Date(df$date[a]),color="darkgrey",size=0.5)+
+  scale_colour_manual(values = cols)+
+  theme_aq_black(base_size=12)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Headline Inflation Comparison",subtitle="Amadeus Inflation Forecast",x ="")+
+  labs(caption = 'Source: Bloomberg')+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%m-%Y"))+
+  theme(legend.position = c(x=0.25, y=-0.15),legend.text=element_text(size=9))+
+  ylab("")
+  #theme(legend.position="none")
+#theme(plot.margin=margin(5,5,5,5))
+
+p3
+
+
+```
+
+
+
+## 5Y5Y Inflation Swap Rates
+
+5Y5Y Inflation Swap Forward rates measure the market's future inflation expectations. The rate is calculated as 2* 10 Year Inflation Swap Zero Coupon Rate - 5 Year Inflation Swap Zero Coupon Rate.
+
+```{r inflation_swaps, echo=FALSE,warning=FALSE,fig.width=6,fig.height=3.4}
+
+dsw<-bdh(c("FWISUS55 Index","FWISEU55 Index"),"px_last",as.Date("2000-01-01"),NULL)
+ds<-rbindlist(dsw,id="id")
+
+mnemonics<-c("FWISUS55 Index","FWISEU55 Index")
+captions<-c("5Y5Y US","5Y5Y Eurozone")
+ds$name<-ifelse(ds$id==mnemonics[1],captions[1],ds$id)
+ds$name<-ifelse(ds$id==mnemonics[2],captions[2],ds$name)
+
+library(ggplot2)
+
+cols <- c("5Y5Y US" = col_aq[1],"5Y5Y Eurozone" = col_aq[2])
+
+p4<-
+  ggplot(data=ds,aes(x=as.Date(date), y=px_last,lu=name,color=name))+
+  #add_rec_shade(as.Date(min(df$date)),as.Date(Sys.Date()))+
+  geom_line(size=0.7)+
+  scale_colour_manual(values = cols)+
+  theme_aq_black(base_size=12)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Market Inflation Expectation",subtitle="5Y5Y Inflation Swap Forward Rates",x ="")+
+  labs(caption = 'Source: Bloomberg')+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%m-%Y"))+
+  theme(legend.position = c(x=0.25, y=-0.15),legend.text=element_text(size=9))+
+  ylab("")
+#theme(legend.position="none")
+#theme(plot.margin=margin(5,5,5,5))
+
+p4
+
+
+```
+
+## 5Y5Y Inflation Swap Rates Comparison
+
+```{r inflation_swaps_comparison, echo=FALSE,warning=FALSE,fig.width=6,fig.height=3.4}
+
+
+ds2<-merge(dsw$`FWISUS55 Index`,dsw$`FWISEU55 Index`,by="date")
+ds2$spread<-ds2$px_last.x-ds2$px_last.y
+ds2$name<-"Spread"
+
+p5<-
+  ggplot(data=ds2,aes(x=as.Date(date), y=spread,lu=name,color=name))+
+  #add_rec_shade(as.Date(min(df$date)),as.Date(Sys.Date()))+
+  geom_line(size=0.7)+
+  scale_colour_manual(values = col_aq[1])+
+  theme_aq_black(base_size=12)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="5Y5Y Inflation Expecation Spread",subtitle="US minus Eurozone",x ="")+
+  labs(caption = 'Source: Bloomberg')+
+  guides(colour = guide_legend(nrow = 1))+
+  #theme(legend.position = c(0.2, 0.9))+
+  scale_x_date(labels = date_format("%m-%Y"))+
+  theme(legend.position = c(x=0.25, y=-0.15),legend.text=element_text(size=9))+
+  ylab("")+
+  theme(legend.position="none")+
+  theme(plot.margin=margin(5,5,5,5))
+
+p5
+
+
+```
+
+
+## CITI Inflation Surprise Index
+The Citi Inflation Surprise Indices measure price surprises relative to market expectations. A positive reading means that inflation has been higher than expected and a negative reading means that inflation has been lower than expected. 
+
+```{r inflation_surprise, echo=FALSE,warning=FALSE,fig.width=6,fig.height=3.4}
+
+
+#19 Citi Inflation Surprise
+
+dsw<-bdh(c("CSIIUSD Index","CSIIEUR Index","CSIIG10 Index","CSIIEM Index","CSIICNY Index","CSIIGBP Index"),"px_last",as.Date("2000-01-01"),NULL)
+ds<-rbindlist(dsw,id="id")
+
+mnemonics<-c("CSIIUSD Index","CSIIEUR Index","CSIIG10 Index","CSIIEM Index","CSIICNY Index","CSIIGBP Index")
+captions<-c("US","Eurozone","G10","Emerging Markets","China","UK")
+ds$name<-ifelse(ds$id==mnemonics[1],captions[1],ds$id)
+ds$name<-ifelse(ds$id==mnemonics[2],captions[2],ds$name)
+ds$name<-ifelse(ds$id==mnemonics[3],captions[3],ds$name)
+ds$name<-ifelse(ds$id==mnemonics[4],captions[4],ds$name)
+ds$name<-ifelse(ds$id==mnemonics[5],captions[5],ds$name)
+ds$name<-ifelse(ds$id==mnemonics[6],captions[6],ds$name)
+
+
+cols <- c("US" = col_aq[1],"Eurozone" = col_aq[2],"G10"=col_aq[3],"Emerging Markets"=col_aq[4],"China"=col_aq[5],"UK"=col_aq[6])
+
+p6<-
+  ggplot(data=ds,aes(x=as.Date(date), y=px_last,lu=name,color=name))+
+  #add_rec_shade(as.Date(min(df$date)),as.Date(Sys.Date()))+
+  geom_line(size=0.7)+
+  scale_colour_manual(values = cols)+
+  theme_aq_black(base_size=12)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Inflation Surprise",subtitle="CITI Inflation Surprise Indices",x ="")+
+  labs(caption = 'Source: Bloomberg')+
+  guides(colour = guide_legend(nrow = 2))+
+  scale_x_date(labels = date_format("%m-%Y"))+
+  theme(legend.position = c(x=0.25, y=-0.12),legend.text=element_text(size=7))+
+  ylab("")
+  #theme(legend.position="none")
+  #theme(plot.margin=margin(10,5,5,5))
+
+p6
+
+
+```
+
+## US Wage Inflation
+
+```{r wage inflation, message=FALSE,echo=FALSE,warning=FALSE,fig.width=6,fig.height=3.4}
+#21 Wage Inflation US
+#--------------------------------------------------------------------------------------------------------------------------
+mnemonics<-c("REALYAHE Index","WGTROVER Index","WGTRLOW Index","ECI YOY Index")
+captions<-c("US Average Hourly Earnings","Atlanta FED Wage Growth","Wage Growth Low Skilled","Cost Civilian Workers")
+df<-bdh(mnemonics,"PX_LAST",start.date = as.Date("2000-07-01"),NULL)
+df<-rbindlist(df, idcol="id")
+df$name<-ifelse(df$id==mnemonics[1],captions[1],df$id)
+df$name<-ifelse(df$id==mnemonics[2],captions[2],df$name)
+df$name<-ifelse(df$id==mnemonics[3],captions[3],df$name)
+df$name<-ifelse(df$id==mnemonics[4],captions[4],df$name)
+
+cols <- c("US Average Hourly Earnings" = col_aq[2],
+          "Atlanta FED Wage Growth" = col_aq[1],
+          "Wage Growth Low Skilled" = col_aq[4],
+          "Cost Civilian Workers" = col_aq[3])
+p12<-
+  ggplot(data=df,aes(x=as.Date(date), y=PX_LAST,lu=name,color=name))+
+  add_rec_shade(as.Date(min(df$date)),as.Date(Sys.Date()))+
+  geom_line(size=0.7)+
+  scale_colour_manual(values = cols)+
+  theme_aq_black(base_size=12)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="US Wage Inflation",subtitle="US Employment Cost y/y",x ="")+
+  labs(caption = 'Source: Bloomberg')+
+  guides(colour = guide_legend(nrow = 5))+
+  theme(legend.position = c(0.7, 0.9))+
+  scale_x_date(labels = date_format("%m-%Y"))+
+  theme(legend.position = c(x=0.2, y=0.8))+
+  ylab("")+
+  #ylim(-2000,2000)+
+  theme(plot.margin=margin(5,5,5,5))
+p12
+
+```
+
+

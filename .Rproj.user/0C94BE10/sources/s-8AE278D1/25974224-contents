@@ -1,0 +1,1894 @@
+
+rm(list=ls())
+
+#****************Packages*************************
+tryCatch({  
+  library(fredr)
+  library(svglite)
+  library(caTools)
+  library(rcarbon)
+  library(scales)
+  library(ecm)
+  library(dplyr)
+  library(readxl)
+  library(data.table)
+  library(zoo)
+  library(ggplot2)
+  library(forcats)
+  library(plotly)
+  target_folder<-"C:/FS/quantamental_platform/Publications/Amadeus_Weekly/ggplots/"
+  
+  #************Charting Function********************
+  #Create Chart
+  source("C:/FS/Systems/ggplot_functions.R")
+  source("C:/FS/quantamental_platform/Publications/Amadeus_Weekly/weekly_functions.R")
+  #file.edit("P:/NEWTREE/Amadeus/CSE_PDE_DHO_FSL/3_FSL/RStudio/ggplot_functions.R")
+  col_w<-get_w_color()
+  col_aq<-get_aq_color()
+  col_aq2<-col_aq
+  
+  #************BBG Connection***********************
+  library(Rblpapi)
+  library(data.table)
+  blpConnect()
+  
+}, error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
+
+
+
+
+#Settings
+#------------------------------------------------------------------------------------------------------------
+week_st<-as.Date("2022-04-15")
+nxt_week_st<-as.Date("2022-04-25")
+nxt_week_ed<-nxt_week_st+6
+
+strftime(week_st+5, format = "%V")
+#Macro Data Functions
+#------------------------------------------------------------------------------------------------------------
+source('C:/FS/quantamental_platform/Publications/Amadeus_Weekly/macro_data_functions.R')
+
+
+
+library(reticulate)
+#Updates from Investing.com
+#virtualenv_create("r-reticulate")
+#virtualenv_install("r-reticulate", "investpy")
+source_python("C:/FS/Systems/investpy_formulas.py")
+
+#df=get_eco_calendar_today()
+
+#Last week
+library(stringr)
+df=get_eco_calendar_flex(st_date=format(week_st+1, "%d/%m/%Y"),ed_date=format(nxt_week_st-1, "%d/%m/%Y"))
+df<-unique(df)
+View(df)
+hg<-df[df$importance=="high" | (df$zone =="united states" & df$event %in% c("Core CPI (YoY)  (Mar)","CPI (YoY)  (Mar)","Michigan Consumer Sentiment  (Mar)","Michigan Consumer Expectations  (Mar)")),]
+hg<-unique(hg)
+View(hg)
+
+
+hg$previous<-ifelse(hg$previous=="NULL","-",hg$previous)
+hg$forecast<-ifelse(hg$forecast=="NULL","-",hg$forecast)
+hg$actual<-ifelse(hg$actual=="NULL","-",hg$actual)
+hg$zone<-str_to_title(hg$zone)
+
+hg$event<-as.character(hg$event)
+hg$previous<-as.character(hg$previous)
+hg$forecast<-as.character(hg$forecast)
+hg$actual<-as.character(hg$actual)
+m<-list(0,0,0,0)
+fig <- plot_ly(
+  type = 'table',
+  columnwidth = c(70, 100,200,50,50,50),
+  #columnorder = c(0, 1,1,1,1,1),
+  header = list(
+    values = c("Date","Zone","Event","Previous","Forecast","Actual"),
+    align = c("center", "center"),
+    line = list(width = 1, color = 'lightgrey'),
+    fill = list(color = c(col_aq[1], col_aq[1])),
+    font = list(family = "Arial", size = 14, color = "white")
+  ),
+  cells = list(
+    values = rbind(hg$date, hg$zone, hg$event,hg$previous,hg$forecast,hg$actual),
+    align = c("center", "left","left","left","left","left"),
+    line = list(color = "lightgrey", width = 1),
+    font = list(family = "Arial", size = 12, color = c("black"))
+  ))%>%
+  layout(margin=m)
+
+fig<-fig %>% config(toImageButtonOptions = list( format = "svg",filename = "eco_last_week",width = 800,height = 800)) 
+fig
+
+#library(plotly)
+#kaleido() 
+#setwd('C:/FS/quantamental_platform/Publications/Amadeus_Weekly/ggplots/')
+#save_image(fig,"last_week.svg")
+
+
+#Week ahead
+dfo=get_eco_calendar_flex(st_date=format(nxt_week_st, "%d/%m/%Y"),ed_date=format(nxt_week_ed, "%d/%m/%Y"))
+hgo<-dfo[dfo$importance=="high",]
+
+hgo$previous<-ifelse(hgo$previous=="NULL","-",hgo$previous)
+hgo$forecast<-ifelse(hgo$forecast=="NULL","-",hgo$forecast)
+hgo$actual<-ifelse(hgo$actual=="NULL","-",hgo$actual)
+hgo$zone<-str_to_title(hgo$zone)
+
+hgo$event<-as.character(hgo$event)
+hgo$previous<-as.character(hgo$previous)
+hgo$forecast<-as.character(hgo$forecast)
+hgo$actual<-as.character(hgo$actual)
+m<-list(0,0,0,0)
+fig <- plot_ly(
+  type = 'table',
+  columnwidth = c(70, 100,200,50,50,50),
+  #columnorder = c(0, 1,1,1,1,1),
+  header = list(
+    values = c("Date","Zone","Event","Previous","Forecast","Actual"),
+    align = c("center", "center"),
+    line = list(width = 1, color = 'lightgrey'),
+    fill = list(color = c(col_aq[1], col_aq[1])),
+    font = list(family = "Arial", size = 14, color = "white")
+  ),
+  cells = list(
+    values = rbind(hgo$date, hgo$zone, hgo$event,hgo$previous,hgo$forecast,hgo$actual),
+    align = c("center", "left","left","left","left","left"),
+    line = list(color = "lightgrey", width = 1),
+    font = list(family = "Arial", size = 12, color = c("black"))
+  ))%>%
+  layout(margin=m)
+
+fig
+fig<-fig %>% config(toImageButtonOptions = list( format = "svg",filename = "eco_week_ahead",width = 800,height = 800)) 
+fig
+
+
+
+#Chart of the week
+hgs<-hg[hg$event=="Core Retail Sales (MoM)  (Dec)",]
+hgs$event<-"Core Retail Sales (MoM)  (Dec)"
+hgs$previous<-1053
+#create_save_scatter(hgs,hgs$event,50,60,c(""))
+create_save_barplot(hgs,hgs$event,c("%"))
+
+#Updates from FRED
+#https://fred.stlouisfed.org/
+get_and_save_fred_data("DTWEXBGS",chart_name="USD appreciation",subline="Nominal Broad U.S. Dollar Index",save_name="trade_weighted_usd",observation_start_dt="2010-07-01",recession_shading="TRUE")
+
+#get_and_save_fred_data("CPHPTT01EZM659N",chart_name="What we are watching",subline="December inflation data will be published on the wednesday",save_name="chart_next_week")
+
+
+#get_and_save_fred_data("RSXFS",chart_name="What we are watching",subline="December inflation data will be published on the wednesday",save_name="chart_next_week")
+
+#Get Time Series investpy
+source_python(paste0("C:/FS/quantamental_platform/Publications/Amadeus_Weekly/investpy_function.py"))
+tspy<-get_hist_time_series_all(symbol='s&p 500',country='united states',st_date='01/01/2000',ed_date='01/02/2022',select_asset_class='Index')
+tspy$date<-row.names(tspy)
+#plot_ly(tspy,x=~date,y=~Close,type="scatter",mode="line")
+
+library(readxl)
+de <- read_excel("C:/Users/Fabian/Downloads/eurozone_cpi.xlsx")
+get_and_save_flex_data(de,chart_name="What we are watching",subline="Eurozone inflation hit a new high this week",save_name="chart_last_week")
+
+#Chartbook
+#------------------------------------------------------------------------------------------------------------
+
+
+broad_market<-c("spx index","sxxp index","tpx index","smi index","mxef index","ukx index","mxwo index","mxcn index","dax index","kospi index","cac index","sptsx index","as51 index","twse index","ibex index","ftsemib index","omx index","osebx index","kfx index","aex index","imoex index","nifty index","sti index")
+def<-c("SPTRCONS Index","SPTRHLTH Index","SPTR5UTL Index","SPTRTELS Index","SPTR5TCH Index")
+cyc<-c("SPTRCOND Index","SPTRFINL Index","SPTRINDU Index","SPTR5MA Index","SPTRENRS Index")
+def_ez<-c("SXCSP Index","SXDP Index","SX6P Index","SXKP Index","SX8P Index")
+cyc_ez<-c("SXCDP Index","SXFINR Index","SXNP Index","SXOP Index","SXEP Index")
+sectors<-c(def,cyc,def_ez,cyc_ez)
+style<-c("MAEUMMT Index","MXEU000V Index","M7EUQU Index","M00IEU02 Index","M7EUHDVD Index","MXEU000G Index")
+style_us<-c("M2US000$ Index","M1US000V Index","M1USQU Index","M00IUS0$ Index","M1CXNNA Index","M1US000G Index")
+govt<-c("USGG10YR Index","USGG2YR Index","GTDEM10YR Corp","GTDEM2YR Corp","GTJPY10YR Corp","GTJPY2YR Corp")
+credit<-c("CDX HY CDSI GEN 5Y SPRD Corp","CDX IG CDSI GEN 5Y Corp","ITRX XOVER CDSI GEN 5Y Corp","ITRX EUR CDSI GEN 5Y Corp")
+commodities<-c("CL1 COMB Comdty","XAU BGN Curncy","XAG BGN Curncy")
+currencies<-c("EURUSD Curncy","EURCHF Curncy","EURJPY Curncy","EURCNY Curncy","EURGBP Curncy","TWI USSP Index","TWI SFSP Index","TWI EUSP Index","TWI BPSP Index")
+crypto<-c("XBTUSD BGN Curncy","XETUSD BGN Curncy","CMBISOLL Index")
+vola<-c("VIX Index","V2X Index")
+
+library(pool)
+library(RMySQL)
+lapply(dbListConnections( dbDriver( drv = "MySQL")), dbDisconnect)
+# pool connection
+pool <<- dbPool(
+  drv = RMySQL::MySQL(),
+  dbname = "gaa",
+  #host = "167.99.95.195",
+  host = "172.40.0.17",
+  username = "root",
+  #password = "Amad3usCap1tal2018",
+  password = "AmCap2019*",
+  port=3306
+)
+
+dfl<-dbGetQuery(pool,paste0("select * from gaa.weekly_data where date > ",paste0(year(Sys.Date())-2,"-12-01")," and date < '",nxt_week_st,"'"))
+dfl<-dfl %>% group_by(id) %>% mutate_all(funs(na.locf(., na.rm = FALSE)))
+dfl$tot_return_index_net_dvds<-ifelse(is.na(dfl$tot_return_index_net_dvds),dfl$px_last,dfl$tot_return_index_net_dvds)
+dfl$ret<-ifelse(dfl$id!=lagpad(dfl$id,k=1),NA,dfl$tot_return_index_net_dvds/lagpad(dfl$tot_return_index_net_dvds,k=1)-1)
+dfl<-dfl[dfl$date>=paste0(year(Sys.Date())-2,"-12-31"),]
+
+
+library(grid)
+#Market Levels Page 1
+#----------------------------------------------------------------------------------------------------------------------------
+dfw<-dcast(as.data.table(dfl[dfl$id %in% c('spx index','sxxp index','mxef index','mxcn index'),]), date ~ id, value.var = c("tot_return_index_net_dvds","px_last"))
+dfw<-na.locf(dfw)
+dfws<-dfw[dfw$date>=week_st,]
+
+p9<-
+  ggplot(data=dfw,aes(x=as.Date(date), y=`px_last_spx index`))+
+  #add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  geom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=`px_last_spx index`,color=col_aq[1]))+
+  scale_colour_manual(values = col_aq[1])+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="S&P 500",subtitle="Index level",x ="")+
+  #labs(caption = paste0('Source: Amadeus Capital SA  ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%y/%m"))+
+  theme(legend.position = "none",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))
+  #scale_y_continuous(labels = percent)
+p9
+annotation<-paste0(round((tail(dfws$`tot_return_index_net_dvds_spx index`,1)/head(dfws$`tot_return_index_net_dvds_spx index`,1)-1)*100,2),"% this week")
+annotation<-ifelse(substr(annotation,1,1)=="-",annotation,paste0("+",annotation))
+grob <- grobTree(textGrob(annotation, x=0.3,  y=0.95, hjust=0, gp=gpar(col=col_aq[1], fontsize=15)))
+# Plot
+p9<-p9 + annotation_custom(grob)
+p9
+
+ggsave(file=paste0(target_folder,"spx_small_lt.svg"), plot=p9, width=6, height=5)
+
+
+dfw<-dcast(as.data.table(dfl[dfl$id %in% c('spx index','sxxp index','mxef index','mxcn index'),]), date ~ id, value.var = c("tot_return_index_net_dvds","px_last"))
+dfw<-na.locf(dfw)
+dfws<-dfw[dfw$date>=week_st,]
+
+p9<-
+  ggplot(data=dfw,aes(x=as.Date(date), y=`px_last_sxxp index`))+
+  #add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  geom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=`px_last_sxxp index`,color=col_aq[1]))+
+  scale_colour_manual(values = col_aq[1])+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="STOXX 600",subtitle="Index level",x ="")+
+  #labs(caption = paste0('Source: Amadeus Capital SA  ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%y/%m"))+
+  theme(legend.position = "none",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))
+#scale_y_continuous(labels = percent)
+p9
+annotation<-paste0(round((tail(dfws$`tot_return_index_net_dvds_sxxp index`,1)/head(dfws$`tot_return_index_net_dvds_sxxp index`,1)-1)*100,2),"% this week")
+annotation<-ifelse(substr(annotation,1,1)=="-",annotation,paste0("+",annotation))
+grob <- grobTree(textGrob(annotation, x=0.3,  y=0.95, hjust=0, gp=gpar(col=col_aq[1], fontsize=15)))
+# Plot
+p9<-p9 + annotation_custom(grob)
+p9
+
+ggsave(file=paste0(target_folder,"sxxp_small_lt.svg"), plot=p9, width=6, height=5)
+
+
+dfw<-dcast(as.data.table(dfl[dfl$id %in% c('spx index','sxxp index','mxef index','mxcn index','smi index'),]), date ~ id, value.var = c("tot_return_index_net_dvds","px_last"))
+dfw<-na.locf(dfw)
+dfws<-dfw[dfw$date>=week_st,]
+
+p9<-
+  ggplot(data=dfw,aes(x=as.Date(date), y=`px_last_smi index`))+
+  #add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  geom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=`px_last_smi index`,color=col_aq[1]))+
+  scale_colour_manual(values = col_aq[1])+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="SMI Index",subtitle="Index level",x ="")+
+  #labs(caption = paste0('Source: Amadeus Capital SA  ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%y/%m"))+
+  theme(legend.position = "none",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))
+#scale_y_continuous(labels = percent)
+p9
+annotation<-paste0(round((tail(dfws$`tot_return_index_net_dvds_smi index`,1)/head(dfws$`tot_return_index_net_dvds_smi index`,1)-1)*100,2),"% this week")
+annotation<-ifelse(substr(annotation,1,1)=="-",annotation,paste0("+",annotation))
+grob <- grobTree(textGrob(annotation, x=0.3,  y=0.95, hjust=0, gp=gpar(col=col_aq[1], fontsize=15)))
+# Plot
+p9<-p9 + annotation_custom(grob)
+p9
+
+ggsave(file=paste0(target_folder,"smi_small_lt.svg"), plot=p9, width=6, height=5)
+
+
+
+dfw<-dcast(as.data.table(dfl[dfl$id %in% c('spx index','sxxp index','mxef index','mxcn index','smi index'),]), date ~ id, value.var = c("tot_return_index_net_dvds","px_last"))
+dfw<-na.locf(dfw)
+dfws<-dfw[dfw$date>=week_st,]
+
+p9<-
+  ggplot(data=dfw,aes(x=as.Date(date), y=`px_last_mxcn index`))+
+  #add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  geom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=`px_last_mxcn index`,color=col_aq[1]))+
+  scale_colour_manual(values = col_aq[1])+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="MSCI China",subtitle="Index level",x ="")+
+  #labs(caption = paste0('Source: Amadeus Capital SA  ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%y/%m"))+
+  theme(legend.position = "none",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))
+#scale_y_continuous(labels = percent)
+p9
+annotation<-paste0(round((tail(dfws$`tot_return_index_net_dvds_mxcn index`,1)/head(dfws$`tot_return_index_net_dvds_mxcn index`,1)-1)*100,2),"% this week")
+annotation<-ifelse(substr(annotation,1,1)=="-",annotation,paste0("+",annotation))
+grob <- grobTree(textGrob(annotation, x=0.3,  y=0.95, hjust=0, gp=gpar(col=col_aq[1], fontsize=15)))
+# Plot
+p9<-p9 + annotation_custom(grob)
+p9
+
+ggsave(file=paste0(target_folder,"mxcn_small_lt.svg"), plot=p9, width=6, height=5)
+
+
+
+
+dfw<-dcast(as.data.table(dfl[dfl$id %in% c('USGG10YR Index','CDX HY CDSI GEN 5Y SPRD Corp','XAU BGN Curncy','CL1 COMB Comdty'),]), date ~ id, value.var = c("px_last"))
+dfw<-na.locf(dfw)
+dfws<-dfw[dfw$date>=week_st,]
+
+
+p9<-
+  ggplot(data=dfw,aes(x=as.Date(date), y=`USGG10YR Index/100`))+
+  #add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  geom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=`USGG10YR Index`/100,color=col_aq[1]))+
+  scale_colour_manual(values = col_aq[1])+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="10Yr Treasury",subtitle="Yield in %",x ="")+
+  #labs(caption = paste0('Source: Amadeus Capital SA  ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%y/%m"))+
+  theme(legend.position = "none",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))+
+  scale_y_continuous(labels = percent)
+p9
+annotation<-paste0(round((tail(dfws$`USGG10YR Index`,1)-head(dfws$`USGG10YR Index`,1)),2)*100,"bp this week")
+annotation<-ifelse(substr(annotation,1,1)=="-",annotation,paste0("+",annotation))
+grob <- grobTree(textGrob(annotation, x=0.3,  y=0.95, hjust=0, gp=gpar(col=col_aq[1], fontsize=15)))
+# Plot
+p9<-p9 + annotation_custom(grob)
+p9
+
+ggsave(file=paste0(target_folder,"treasury10_small_lt.svg"), plot=p9, width=6, height=5)
+
+
+dfw<-dcast(as.data.table(dfl[dfl$id %in% c('USGG10YR Index','CDX HY CDSI GEN 5Y SPRD Corp','XAU BGN Curncy','CL1 COMB Comdty'),]), date ~ id, value.var = c("px_last"))
+dfw<-na.locf(dfw)
+dfws<-dfw[dfw$date>=week_st,]
+
+
+p9<-
+  ggplot(data=dfw,aes(x=as.Date(date), y=`CDX HY CDSI GEN 5Y SPRD Corp`/10000))+
+  #add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  geom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=`CDX HY CDSI GEN 5Y SPRD Corp`/10000,color=col_aq[1]))+
+  scale_colour_manual(values = col_aq[1])+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="US High Yield Spreads",subtitle="CDX Spread in bp",x ="")+
+  #labs(caption = paste0('Source: Amadeus Capital SA  ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%y/%m"))+
+  theme(legend.position = "none",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))+
+  scale_y_continuous(labels = percent)
+p9
+annotation<-paste0(round((tail(dfws$`CDX HY CDSI GEN 5Y SPRD Corp`,1)-head(dfws$`CDX HY CDSI GEN 5Y SPRD Corp`,1)),2),"bp this week")
+annotation<-ifelse(substr(annotation,1,1)=="-",annotation,paste0("+",annotation))
+grob <- grobTree(textGrob(annotation, x=0.3,  y=0.95, hjust=0, gp=gpar(col=col_aq[1], fontsize=15)))
+# Plot
+p9<-p9 + annotation_custom(grob)
+p9
+
+ggsave(file=paste0(target_folder,"ushg_spread_small_lt.svg"), plot=p9, width=6, height=5)
+
+
+
+
+dfw<-dcast(as.data.table(dfl[dfl$id %in% c('USGG10YR Index','CDX HY CDSI GEN 5Y SPRD Corp','XAU BGN Curncy','CL1 COMB Comdty'),]), date ~ id, value.var = c("px_last"))
+dfw<-na.locf(dfw)
+dfws<-dfw[dfw$date>=week_st,]
+
+
+p9<-
+  ggplot(data=dfw,aes(x=as.Date(date), y=`XAU BGN Curncy`))+
+  #add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  geom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=`XAU BGN Curncy`,color=col_aq[1]))+
+  scale_colour_manual(values = col_aq[1])+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Gold",subtitle="Price in USD",x ="")+
+  #labs(caption = paste0('Source: Amadeus Capital SA  ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%y/%m"))+
+  theme(legend.position = "none",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))
+#scale_y_continuous(labels = percent)
+p9
+annotation<-paste0(round((tail(dfws$`XAU BGN Curncy`,1)/head(dfws$`XAU BGN Curncy`,1)-1)*100,2),"% this week")
+annotation<-ifelse(substr(annotation,1,1)=="-",annotation,paste0("+",annotation))
+grob <- grobTree(textGrob(annotation, x=0.3,  y=0.95, hjust=0, gp=gpar(col=col_aq[1], fontsize=15)))
+# Plot
+p9<-p9 + annotation_custom(grob)
+p9
+
+ggsave(file=paste0(target_folder,"gold_small_lt.svg"), plot=p9, width=6, height=5)
+
+
+
+dfw<-dcast(as.data.table(dfl[dfl$id %in% c('USGG10YR Index','CDX HY CDSI GEN 5Y SPRD Corp','XAU BGN Curncy','CL1 COMB Comdty'),]), date ~ id, value.var = c("px_last"))
+dfw<-na.locf(dfw)
+dfws<-dfw[dfw$date>=week_st,]
+
+
+p9<-
+  ggplot(data=dfw,aes(x=as.Date(date), y=`CL1 COMB Comdty`))+
+  #add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  geom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=`CL1 COMB Comdty`,color=col_aq[1]))+
+  scale_colour_manual(values = col_aq[1])+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Crude Oil",subtitle="Price in USD",x ="")+
+  #labs(caption = paste0('Source: Amadeus Capital SA  ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%y/%m"))+
+  theme(legend.position = "none",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))
+#scale_y_continuous(labels = percent)
+p9
+annotation<-paste0(round((tail(dfws$`CL1 COMB Comdty`,1)/head(dfws$`CL1 COMB Comdty`,1)-1)*100,2),"% this week")
+annotation<-ifelse(substr(annotation,1,1)=="-",annotation,paste0("+",annotation))
+grob <- grobTree(textGrob(annotation, x=0.3,  y=0.95, hjust=0, gp=gpar(col=col_aq[1], fontsize=15)))
+# Plot
+p9<-p9 + annotation_custom(grob)
+p9
+
+ggsave(file=paste0(target_folder,"oil_small_lt.svg"), plot=p9, width=6, height=5)
+
+
+
+
+#Major Markets
+#---------------------------------------------------------------------------------------------------------
+cols <- c("S&P 500" = col_aq[1],"STOXX 600" = col_aq[2],"MSCI EM" = col_aq[3],"MSCI China" = col_aq[4])
+dfw<-dcast(as.data.table(dfl[dfl$id %in% c('spx index','sxxp index','mxef index','mxcn index'),]), date ~ id, value.var = "tot_return_index_net_dvds")
+dfw<-na.locf(dfw)
+#week_st<-as.Date(head(dfw$date[strftime(dfw$date, format = "%Y%V")==tail(strftime(dfw$date, format = "%Y%V"),1)],1))
+
+dfws<-dfw[dfw$date>=week_st,]
+
+p9<-
+  ggplot(data=dfw,aes(x=as.Date(date), y=`spx index`/head(`spx index`,1)))+
+  #add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  geom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=`spx index`/head(`spx index`,1)-1,color="S&P 500"))+
+  geom_line(size=1,aes(y=`sxxp index`/head(`sxxp index`,1)-1,color="STOXX 600"))+
+  geom_line(size=1,aes(y=`mxef index`/head(`mxef index`,1)-1,color="MSCI EM"))+
+  geom_line(size=1,aes(y=`mxcn index`/head(`mxcn index`,1)-1,color="MSCI China"))+
+  scale_colour_manual(values = cols)+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Broad Markets",subtitle="Total return %",x ="")+
+  labs(caption = paste0('Source: Amadeus Capital SA  ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%y/%m"))+
+  theme(legend.position = "bottom",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))+
+  scale_y_continuous(labels = percent)
+p9
+
+ggsave(file=paste0(target_folder,"broad_market1_lt.svg"), plot=p9, width=10, height=5.5)
+
+
+p9<-
+  ggplot(data=dfws,aes(x=as.Date(date), y=`spx index`/head(`spx index`,1)))+
+  ##add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  #geom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=`spx index`/head(`spx index`,1)-1,color="S&P 500"))+
+  geom_line(size=1,aes(y=`sxxp index`/head(`sxxp index`,1)-1,color="STOXX 600"))+
+  geom_line(size=1,aes(y=`mxef index`/head(`mxef index`,1)-1,color="MSCI EM"))+
+  geom_line(size=1,aes(y=`mxcn index`/head(`mxcn index`,1)-1,color="MSCI China"))+
+  geom_point(size=3,aes(y=`spx index`/head(`spx index`,1)-1,color="S&P 500"))+
+  geom_point(size=3,aes(y=`sxxp index`/head(`sxxp index`,1)-1,color="STOXX 600"))+
+  geom_point(size=3,aes(y=`mxef index`/head(`mxef index`,1)-1,color="MSCI EM"))+
+  geom_point(size=3,aes(y=`mxcn index`/head(`mxcn index`,1)-1,color="MSCI China"))+
+  scale_colour_manual(values = cols)+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Broad Markets",subtitle="Total return %",x ="")+
+  labs(caption = paste0('Source: Bloomberg, Amadeus ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%m/%d"))+
+  theme(legend.position = "bottom",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))+
+  scale_y_continuous(labels = percent)
+p9
+
+
+
+p9<-
+ydt_wtd_bar_function(dfl,
+                     month_st=week_st,
+                     tickers=c('spx index','sxxp index','mxef index','mxcn index'),
+                     names=c('S&P 500','STOXX 600','MSCI EM','MSCI China'),
+                     mnemonic="tot_return_index_net_dvds",
+                     calculation="gain",
+                     chart_title="Broad Markets",
+                     chart_subtitle="Total return %")
+p9
+
+
+ggsave(file=paste0(target_folder,"broad_market1_st.svg"), plot=p9, width=6, height=5.5)
+
+
+#Major Markets 2
+cols <- c("MSCI World" = col_aq[1],"SMI Index" = col_aq[2],"TOPIX 100" = col_aq[3],"FTSE 100" = col_aq[4])
+dfw<-dcast(as.data.table(dfl[dfl$id %in% c('tpx index','smi index','ukx index','mxwo index'),]), date ~ id, value.var = "tot_return_index_net_dvds")
+dfw<-na.locf(dfw)
+#week_st<-as.Date(head(dfw$date[strftime(dfw$date, format = "%Y%V")==tail(strftime(dfw$date, format = "%Y%V"),1)],1))
+
+dfws<-dfw[dfw$date>=week_st,]
+
+p9<-
+  ggplot(data=dfw,aes(x=as.Date(date), y=`spx index`/head(`spx index`,1)))+
+  #add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  geom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=`mxwo index`/head(`mxwo index`,1)-1,color="MSCI World"))+
+  geom_line(size=1,aes(y=`smi index`/head(`smi index`,1)-1,color="SMI Index"))+
+  geom_line(size=1,aes(y=`tpx index`/head(`tpx index`,1)-1,color="TOPIX 100"))+
+  geom_line(size=1,aes(y=`ukx index`/head(`ukx index`,1)-1,color="FTSE 100"))+
+  scale_colour_manual(values = cols)+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Broad Markets",subtitle="Total return %",x ="")+
+  labs(caption = paste0('Source: Amadeus Capital SA  ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%y/%m"))+
+  theme(legend.position = "bottom",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))+
+  scale_y_continuous(labels = percent)
+p9
+
+ggsave(file=paste0(target_folder,"broad_market2_lt.svg"), plot=p9, width=10, height=5.5)
+
+
+p9<-
+  ggplot(data=dfws,aes(x=as.Date(date), y=`spx index`/head(`spx index`,1)))+
+  ##add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  #geom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=`mxwo index`/head(`mxwo index`,1)-1,color="MSCI World"))+
+  geom_line(size=1,aes(y=`smi index`/head(`smi index`,1)-1,color="SMI Index"))+
+  geom_line(size=1,aes(y=`tpx index`/head(`tpx index`,1)-1,color="TOPIX 100"))+
+  geom_line(size=1,aes(y=`ukx index`/head(`ukx index`,1)-1,color="FTSE 100"))+
+  geom_point(size=3,aes(y=`mxwo index`/head(`mxwo index`,1)-1,color="MSCI World"))+
+  geom_point(size=3,aes(y=`smi index`/head(`smi index`,1)-1,color="SMI Index"))+
+  geom_point(size=3,aes(y=`tpx index`/head(`tpx index`,1)-1,color="TOPIX 100"))+
+  geom_point(size=3,aes(y=`ukx index`/head(`ukx index`,1)-1,color="FTSE 100"))+
+  scale_colour_manual(values = cols)+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Broad Markets",subtitle="Total return %",x ="")+
+  labs(caption = paste0('Source: Bloomberg, Amadeus ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%m/%d"))+
+  theme(legend.position = "bottom",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))+
+  scale_y_continuous(labels = percent)
+p9
+
+p9<-
+  ydt_wtd_bar_function(dfl,
+                       month_st=week_st,
+                       tickers=c('tpx index','smi index','ukx index','mxwo index'),
+                       names=c('TOPIX 100','SMI Index','FTSE 100','MSCI EM'),
+                       mnemonic="tot_return_index_net_dvds",
+                       calculation="gain",
+                       chart_title="Broad Markets",
+                       chart_subtitle="Total return %")
+p9
+
+ggsave(file=paste0(target_folder,"broad_market2_st.svg"), plot=p9, width=6, height=5.5)
+
+
+
+
+
+#Styles Europe
+cols <- c("Value" = col_aq[1],"Momentum" = col_aq[2],"Quality" = col_aq[3],"Yield" = col_aq[4],"Low Vol" = col_aq[5],"Growth" = col_aq[6])
+dfw<-dcast(as.data.table(dfl[dfl$id %in% c("MAEUMMT Index","MXEU000V Index","M7EUQU Index","M00IEU02 Index","M7EUHDVD Index","MXEU000G Index"),]), date ~ id, value.var = "tot_return_index_net_dvds")
+dfw<-na.locf(dfw)
+#week_st<-as.Date(head(dfw$date[strftime(dfw$date, format = "%Y%V")==tail(strftime(dfw$date, format = "%Y%V"),1)],1))
+
+dfws<-dfw[dfw$date>=week_st,]
+
+p9<-
+  ggplot(data=dfw,aes(x=as.Date(date), y=`spx index`/head(`spx index`,1)))+
+  ##add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  geom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=`MXEU000V Index`/head(`MXEU000V Index`,1)-1,color="Value"))+
+  geom_line(size=1,aes(y=`MXEU000G Index`/head(`MXEU000G Index`,1)-1,color="Growth"))+  
+  geom_line(size=1,aes(y=`MAEUMMT Index`/head(`MAEUMMT Index`,1)-1,color="Momentum"))+
+  geom_line(size=1,aes(y=`M7EUQU Index`/head(`M7EUQU Index`,1)-1,color="Quality"))+
+  geom_line(size=1,aes(y=`M7EUHDVD Index`/head(`M7EUHDVD Index`,1)-1,color="Yield"))+  
+  geom_line(size=1,aes(y=`M00IEU02 Index`/head(`M00IEU02 Index`,1)-1,color="Low Vol"))+
+  scale_colour_manual(values = cols)+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Styles Europe",subtitle="Total return %",x ="")+
+  labs(caption = paste0('Source: Bloomberg, Amadeus ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%y/%m"))+
+  theme(legend.position = "bottom",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))+
+  scale_y_continuous(labels = percent)
+p9
+
+ggsave(file=paste0(target_folder,"styles_eu_lt.svg"), plot=p9, width=10, height=5.5)
+
+
+p9<-
+  ggplot(data=dfws,aes(x=as.Date(date), y=`spx index`/head(`spx index`,1)))+
+  ##add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  #eom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=`MXEU000V Index`/head(`MXEU000V Index`,1)-1,color="Value"))+
+  geom_line(size=1,aes(y=`MXEU000G Index`/head(`MXEU000G Index`,1)-1,color="Growth"))+
+  geom_line(size=1,aes(y=`MAEUMMT Index`/head(`MAEUMMT Index`,1)-1,color="Momentum"))+
+  geom_line(size=1,aes(y=`M7EUQU Index`/head(`M7EUQU Index`,1)-1,color="Quality"))+
+  geom_line(size=1,aes(y=`M7EUHDVD Index`/head(`M7EUHDVD Index`,1)-1,color="Yield"))+  
+  geom_line(size=1,aes(y=`M00IEU02 Index`/head(`M00IEU02 Index`,1)-1,color="Low Vol"))+
+  geom_point(size=3,aes(y=`MXEU000V Index`/head(`MXEU000V Index`,1)-1,color="Value"))+
+  geom_point(size=3,aes(y=`MXEU000G Index`/head(`MXEU000G Index`,1)-1,color="Growth"))+
+  geom_point(size=3,aes(y=`MAEUMMT Index`/head(`MAEUMMT Index`,1)-1,color="Momentum"))+
+  geom_point(size=3,aes(y=`M7EUQU Index`/head(`M7EUQU Index`,1)-1,color="Quality"))+
+  geom_point(size=3,aes(y=`M7EUHDVD Index`/head(`M7EUHDVD Index`,1)-1,color="Yield"))+  
+  geom_point(size=3,aes(y=`M00IEU02 Index`/head(`M00IEU02 Index`,1)-1,color="Low Vol"))+
+  scale_colour_manual(values = cols)+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Styles Europe",subtitle="Total return %",x ="")+
+  labs(caption = paste0('Source: Amadeus Capital SA ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 2))+
+  scale_x_date(labels = date_format("%m/%d"))+
+  theme(legend.position = "bottom",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))+
+  scale_y_continuous(labels = percent)
+p9
+
+ggsave(file=paste0(target_folder,"styles_eu_st.svg"), plot=p9, width=6, height=5.5)
+
+
+
+dfws<-as.data.table(dfws)
+ez_glossary<-as.data.frame(cbind(c("MXEU000V Index","MXEU000G Index","MAEUMMT Index","M7EUQU Index","M7EUHDVD Index","M00IEU02 Index"),
+                                 c("Value","Growth","Momentum","Quality","Yield","Low Vol")),stringsAsFactors=F)
+names(ez_glossary)<-c("id","names")
+
+eqw<-as.data.frame(t(as.data.frame(tail(dfws[,-"date"],1)/head(dfws[,-"date"],1)-1)))
+eqw$id<-rownames(eqw)
+eqw<-merge(eqw,ez_glossary,by="id")
+
+p9<-
+  eqw %>%
+  mutate(names = fct_reorder(names, desc(-V1))) %>%
+  ggplot( aes(x=names, y=V1)) +
+  geom_bar(stat="identity", fill=col_aq[1], alpha=1, width=.4) +
+  coord_flip() +
+  xlab("") +
+  scale_colour_manual(values =col_aq[1] )+
+  scale_fill_manual(values=col_aq[1])+
+  theme_aq_black_default_font(base_size=20)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Styles Europe",subtitle="Last week's performance %",x ="")+
+  theme(plot.title.position = "plot")+
+  theme(plot.title = element_text(hjust = 0.05))+
+  theme(plot.subtitle = element_text(hjust = 0.06))+
+  labs(caption = '')+
+  xlab("")+
+  ylab("")+
+  #scale_x_continuous(labels = scales::percent_format(accuracy = 1))+
+  theme(legend.position = "none",legend.title = element_blank())+
+  theme(plot.margin=margin(l=5,r=10,b=5,t=5))+
+  scale_y_continuous(labels = percent)
+p9
+
+
+p9<-
+  ydt_wtd_bar_function(dfl,
+                       month_st=week_st,
+                       tickers=c("MAEUMMT Index","MXEU000V Index","M7EUQU Index","M00IEU02 Index","M7EUHDVD Index","MXEU000G Index"),
+                       names=c("Value","Momentum","Quality","Yield","Low Vol","Growth"),
+                       mnemonic="tot_return_index_net_dvds",
+                       calculation="gain",
+                       chart_title="Styles Europe",
+                       chart_subtitle="Total return %")
+p9
+
+
+ggsave(file=paste0(target_folder,"styles_eu_st_bar.svg"), plot=p9, width=8.882548, height=6)
+
+
+
+#Styles U.S.
+cols <- c("Value" = col_aq[1],"Momentum" = col_aq[2],"Quality" = col_aq[3],"Yield" = col_aq[4],"Low Vol" = col_aq[5],"Growth" = col_aq[6])
+dfw<-dcast(as.data.table(dfl[dfl$id %in% c("M2US000$ Index","M1US000V Index","M1USQU Index","M00IUS0$ Index","M1CXNNA Index","M1US000G Index"),]), date ~ id, value.var = "tot_return_index_net_dvds")
+dfw<-na.locf(dfw)
+#week_st<-as.Date(head(dfw$date[strftime(dfw$date, format = "%Y%V")==tail(strftime(dfw$date, format = "%Y%V"),1)],1))
+
+dfws<-dfw[dfw$date>=week_st,]
+
+
+p9<-
+  ggplot(data=dfw,aes(x=as.Date(date), y=`spx index`/head(`spx index`,1)))+
+  ##add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  geom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=`M1US000V Index`/head(`M1US000V Index`,1)-1,color="Value"))+
+  geom_line(size=1,aes(y=`M1US000G Index`/head(`M1US000G Index`,1)-1,color="Growth"))+
+  geom_line(size=1,aes(y=`M2US000$ Index`/head(`M2US000$ Index`,1)-1,color="Momentum"))+
+  geom_line(size=1,aes(y=`M1USQU Index`/head(`M1USQU Index`,1)-1,color="Quality"))+
+  geom_line(size=1,aes(y=`M1CXNNA Index`/head(`M1CXNNA Index`,1)-1,color="Yield"))+  
+  geom_line(size=1,aes(y=`M00IUS0$ Index`/head(`M00IUS0$ Index`,1)-1,color="Low Vol"))+
+  scale_colour_manual(values = cols)+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Styles U.S.",subtitle="Total return %",x ="")+
+  labs(caption = paste0('Source: Bloomberg, Amadeus ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%y/%m"))+
+  theme(legend.position = "bottom",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))+
+  scale_y_continuous(labels = percent)
+p9
+
+ggsave(file=paste0(target_folder,"styles_us_lt.svg"), plot=p9, width=10, height=5.5)
+
+
+p9<-
+  ggplot(data=dfws,aes(x=as.Date(date), y=`spx index`/head(`spx index`,1)))+
+  ##add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  #eom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=`M1US000V Index`/head(`M1US000V Index`,1)-1,color="Value"))+
+  geom_line(size=1,aes(y=`M1US000G Index`/head(`M1US000G Index`,1)-1,color="Growth"))+
+  geom_line(size=1,aes(y=`M2US000$ Index`/head(`M2US000$ Index`,1)-1,color="Momentum"))+
+  geom_line(size=1,aes(y=`M1USQU Index`/head(`M1USQU Index`,1)-1,color="Quality"))+
+  geom_line(size=1,aes(y=`M1CXNNA Index`/head(`M1CXNNA Index`,1)-1,color="Yield"))+  
+  geom_line(size=1,aes(y=`M00IUS0$ Index`/head(`M00IUS0$ Index`,1)-1,color="Low Vol"))+
+  geom_point(size=3,aes(y=`M1US000V Index`/head(`M1US000V Index`,1)-1,color="Value"))+
+  geom_point(size=3,aes(y=`M1US000G Index`/head(`M1US000G Index`,1)-1,color="Growth"))+
+  geom_point(size=3,aes(y=`M2US000$ Index`/head(`M2US000$ Index`,1)-1,color="Momentum"))+
+  geom_point(size=3,aes(y=`M1USQU Index`/head(`M1USQU Index`,1)-1,color="Quality"))+
+  geom_point(size=3,aes(y=`M1CXNNA Index`/head(`M1CXNNA Index`,1)-1,color="Yield"))+  
+  geom_point(size=3,aes(y=`M00IUS0$ Index`/head(`M00IUS0$ Index`,1)-1,color="Low Vol"))+
+  scale_colour_manual(values = cols)+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Styles U.S.",subtitle="Total return %",x ="")+
+  labs(caption = paste0('Source: Amadeus Capital SA ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 2))+
+  scale_x_date(labels = date_format("%m/%d"))+
+  theme(legend.position = "bottom",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))+
+  scale_y_continuous(labels = percent)
+p9
+
+ggsave(file=paste0(target_folder,"styles_us_st.svg"), plot=p9, width=6, height=5.5)
+
+
+
+us_glossary<-as.data.frame(cbind(c("M1US000V Index","M1US000G Index","M2US000$ Index","M1USQU Index","M1CXNNA Index","M00IUS0$ Index"),
+c("Value","Growth","Momentum","Quality","Yield","Low Vol")),stringsAsFactors=F)
+names(us_glossary)<-c("id","names")
+
+eqw<-as.data.frame(t(as.data.frame(tail(dfws[,-"date"],1)/head(dfws[,-"date"],1)-1)))
+eqw$id<-rownames(eqw)
+eqw<-merge(eqw,us_glossary,by="id")
+
+p9<-
+  eqw %>%
+  mutate(names = fct_reorder(names, desc(-V1))) %>%
+  ggplot( aes(x=names, y=V1)) +
+  geom_bar(stat="identity", fill=col_aq[1], alpha=1, width=.4) +
+  coord_flip() +
+  xlab("") +
+  scale_colour_manual(values =col_aq[1] )+
+  scale_fill_manual(values=col_aq[1])+
+  theme_aq_black_default_font(base_size=20)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Styles U.S.",subtitle="Last week's performance %",x ="")+
+  theme(plot.title.position = "plot")+
+  theme(plot.title = element_text(hjust = 0.05))+
+  theme(plot.subtitle = element_text(hjust = 0.06))+
+  labs(caption = '')+
+  xlab("")+
+  ylab("")+
+  #scale_x_continuous(labels = scales::percent_format(accuracy = 1))+
+  theme(legend.position = "none",legend.title = element_blank())+
+  theme(plot.margin=margin(l=5,r=10,b=5,t=5))+
+  scale_y_continuous(labels = percent)
+p9
+
+p9<-
+  ydt_wtd_bar_function(dfl,
+                       month_st=week_st,
+                       tickers=c("M1US000V Index","M1US000G Index","M2US000$ Index","M1USQU Index","M1CXNNA Index","M00IUS0$ Index"),
+                       names=c("Value","Growth","Momentum","Quality","Yield","Low Vol"),
+                       mnemonic="tot_return_index_net_dvds",
+                       calculation="gain",
+                       chart_title="Styles U.S.",
+                       chart_subtitle="Total return %")
+p9
+
+ggsave(file=paste0(target_folder,"styles_us_st_bar.svg"), plot=p9, width=8.882548, height=6)
+
+
+
+#Cyclicals vs Defensives Europe
+def_ez<-c("SXCSP Index","SXDP Index","SX6P Index","SXKP Index","SX8P Index")
+cyc_ez<-c("SXCDP Index","SXFINR Index","SXNP Index","SXOP Index","SXEP Index")
+sectors<-c(def_ez,cyc_ez)
+#Sectors US
+cols <- c("Cyclicals" = col_aq[1],"Defensives" = col_aq[2])
+dfw<-dcast(as.data.table(dfl[dfl$id %in% sectors,]), date ~ id, value.var = "ret")
+dfw[is.na(dfw),]<-0
+dfw$def<-rowMeans(dfw[,c("SXCSP Index","SXDP Index","SX6P Index","SXKP Index","SX8P Index")])
+dfw$cyc<-rowMeans(dfw[,c("SXCDP Index","SXFINR Index","SXNP Index","SXOP Index","SXEP Index")])
+#week_st<-as.Date(head(dfw$date[strftime(dfw$date, format = "%Y%V")==tail(strftime(dfw$date, format = "%Y%V"),1)],1))
+
+dfws<-dfw[dfw$date>=week_st,]
+
+p9<-
+  ggplot(data=dfw,aes(x=as.Date(date), y=`spx index`/head(`spx index`,1)))+
+  #add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  geom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=(cumprod(1+cyc)/head(cumprod(1+cyc),1))-1,color="Cyclicals"))+
+  geom_line(size=1,aes(y=(cumprod(1+def)/head(cumprod(1+def),1))-1,color="Defensives"))+
+  scale_colour_manual(values = cols)+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Cyclicals vs Defensives Europe",subtitle="Total return %",x ="")+
+  labs(caption = paste0('Source: Bloomberg, Amadeus ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%y/%m"))+
+  theme(legend.position = "bottom",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))+
+  scale_y_continuous(labels = percent)
+p9
+
+ggsave(file=paste0(target_folder,"cyclicals_defensives_eu_lt.svg"), plot=p9, width=10, height=5.5)
+
+
+p9<-
+  ggplot(data=dfws,aes(x=as.Date(date), y=cumprod(1+cyc)-1))+
+  ##add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  #eom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=(cumprod(1+cyc)/head(cumprod(1+cyc),1))-1,color="Cyclicals"))+
+  geom_line(size=1,aes(y=(cumprod(1+def)/head(cumprod(1+def),1))-1,color="Defensives"))+
+  geom_point(size=3,aes(y=(cumprod(1+cyc)/head(cumprod(1+cyc),1))-1,color="Cyclicals"))+
+  geom_point(size=3,aes(y=(cumprod(1+def)/head(cumprod(1+def),1))-1,color="Defensives"))+
+  scale_colour_manual(values = cols)+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Cyclicals vs Defensives Europe",subtitle="Total return %",x ="")+
+  labs(caption = paste0('Source: Amadeus Capital SA ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 2))+
+  scale_x_date(labels = date_format("%m/%d"))+
+  theme(legend.position = "bottom",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))+
+  scale_y_continuous(labels = percent)
+p9
+
+
+dfw$cyc_index<-cumprod(1+dfw$cyc)
+dfw$def_index<-cumprod(1+dfw$def)
+dfl1<-melt(dfw)
+dfl1$id<-dfl1$variable
+p9<-
+  ydt_wtd_bar_function(dfl1,
+                       month_st=week_st,
+                       tickers=c("cyc_index","def_index"),
+                       names=c("Cyclicals","Defensives"),
+                       mnemonic="value",
+                       calculation="gain",
+                       chart_title="Cyclicals vs Defensives Europe",
+                       chart_subtitle="Total return %")
+p9
+
+
+ggsave(file=paste0(target_folder,"cyclicals_defensives_eu_st.svg"), plot=p9, width=6, height=5.5)
+
+
+#Styles US
+dfw<-dcast(as.data.table(dfl[dfl$id %in% sectors,]), date ~ id, value.var = "tot_return_index_net_dvds")
+dfws<-dfw[dfw$date>=week_st,]
+ez_glossary<-as.data.frame(cbind(c("SXCSP Index","SXDP Index","SX6P Index","SXKP Index","SX8P Index","SXCDP Index","SXFINR Index","SXNP Index","SXOP Index","SXEP Index"),
+                                 c("Staples","Health Care","Utilities","Telcos","Tech","Cons Discr","Industrials","Financials","Materials","Energy")),stringsAsFactors=F)
+names(ez_glossary)<-c("id","names")
+
+eqw<-as.data.frame(t(as.data.frame(tail(dfws[,-"date"],1)/head(dfws[,-"date"],1)-1)))
+eqw$id<-rownames(eqw)
+eqw<-merge(eqw,ez_glossary,by="id")
+eqw$colors<-ifelse(eqw$id %in% def_ez,col_aq[1],col_aq[2])
+
+p9<-
+  eqw %>%
+  mutate(names = fct_reorder(names, desc(-V1))) %>%
+  ggplot( aes(x=names, y=V1)) +
+  geom_bar(stat="identity", fill=eqw$colors, alpha=1, width=.4) +
+  coord_flip() +
+  xlab("") +
+  scale_colour_manual(values =col_aq[1] )+
+  scale_fill_manual(values=colors)+
+  theme_aq_black_default_font(base_size=20)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Sectors Europe",subtitle="Last week's performance % (Cyc = red, def = blue)",x ="")+
+  theme(plot.title.position = "plot")+
+  theme(plot.title = element_text(hjust = 0.05))+
+  theme(plot.subtitle = element_text(hjust = 0.06))+
+  labs(caption = '')+
+  xlab("")+
+  ylab("")+
+  #scale_x_continuous(labels = scales::percent_format(accuracy = 1))+
+  theme(legend.position = "none",legend.title = element_blank())+
+  theme(plot.margin=margin(l=5,r=10,b=5,t=5))+
+  scale_y_continuous(labels = percent)
+p9
+
+ggsave(file=paste0(target_folder,"sectors_eu_st_bar.svg"), plot=p9, width=6, height=6)
+
+
+
+
+
+#Cyclicals vs Defensives U.S.
+def<-c("SPTRCONS Index","SPTRHLTH Index","SPTR5UTL Index","SPTRTELS Index","SPTR5TCH Index")
+cyc<-c("SPTRCOND Index","SPTRFINL Index","SPTRINDU Index","SPTR5MA Index","SPTRENRS Index")
+sectors<-c(def,cyc)
+#Sectors US
+cols <- c("Cyclicals" = col_aq[1],"Defensives" = col_aq[2])
+dfw<-dcast(as.data.table(dfl[dfl$id %in% sectors,]), date ~ id, value.var = "ret")
+dfw[is.na(dfw),]<-0
+dfw$def<-rowMeans(dfw[,c("SPTRCONS Index","SPTRHLTH Index","SPTR5UTL Index","SPTRTELS Index","SPTR5TCH Index")])
+dfw$cyc<-rowMeans(dfw[,c("SPTRCOND Index","SPTRFINL Index","SPTRINDU Index","SPTR5MA Index","SPTRENRS Index")])
+#week_st<-as.Date(head(dfw$date[strftime(dfw$date, format = "%Y%V")==tail(strftime(dfw$date, format = "%Y%V"),1)],1))
+
+dfws<-dfw[dfw$date>=week_st,]
+
+p9<-
+  ggplot(data=dfw,aes(x=as.Date(date), y=`spx index`/head(`spx index`,1)))+
+  #add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  geom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=(cumprod(1+cyc)/head(cumprod(1+cyc),1))-1,color="Cyclicals"))+
+  geom_line(size=1,aes(y=(cumprod(1+def)/head(cumprod(1+def),1))-1,color="Defensives"))+
+  scale_colour_manual(values = cols)+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Sectors U.S.",subtitle="Total return %",x ="")+
+  labs(caption = paste0('Source: Bloomberg, Amadeus ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%y/%m"))+
+  theme(legend.position = "bottom",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))+
+  scale_y_continuous(labels = percent)
+p9
+
+ggsave(file=paste0(target_folder,"cyclicals_defensives_us_lt.svg"), plot=p9, width=10, height=5.5)
+
+
+p9<-
+  ggplot(data=dfws,aes(x=as.Date(date), y=cumprod(1+cyc)-1))+
+  ##add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  #eom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=(cumprod(1+cyc)/head(cumprod(1+cyc),1))-1,color="Cyclicals"))+
+  geom_line(size=1,aes(y=(cumprod(1+def)/head(cumprod(1+def),1))-1,color="Defensives"))+
+  geom_point(size=3,aes(y=(cumprod(1+cyc)/head(cumprod(1+cyc),1))-1,color="Cyclicals"))+
+  geom_point(size=3,aes(y=(cumprod(1+def)/head(cumprod(1+def),1))-1,color="Defensives"))+
+  scale_colour_manual(values = cols)+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Cyclicals vs Defensives",subtitle="Total return %",x ="")+
+  labs(caption = paste0('Source: Amadeus Capital SA ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 2))+
+  scale_x_date(labels = date_format("%m/%d"))+
+  theme(legend.position = "bottom",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))+
+  scale_y_continuous(labels = scales::percent_format(accuracy = 0.1))
+p9
+
+
+dfw$cyc_index<-cumprod(1+dfw$cyc)
+dfw$def_index<-cumprod(1+dfw$def)
+dfl1<-melt(dfw)
+dfl1$id<-dfl1$variable
+p9<-
+  ydt_wtd_bar_function(dfl1,
+                       month_st=week_st,
+                       tickers=c("cyc_index","def_index"),
+                       names=c("Cyclicals","Defensives"),
+                       mnemonic="value",
+                       calculation="gain",
+                       chart_title="Cyclicals vs Defensives U.S.",
+                       chart_subtitle="Total return %")
+p9
+
+
+ggsave(file=paste0(target_folder,"cyclicals_defensives_us_st.svg"), plot=p9, width=6, height=5.5)
+
+
+
+dfw<-dcast(as.data.table(dfl[dfl$id %in% sectors,]), date ~ id, value.var = "tot_return_index_net_dvds")
+dfws<-dfw[dfw$date>=week_st,]
+us_glossary<-as.data.frame(cbind(c("SPTRCONS Index","SPTRHLTH Index","SPTR5UTL Index","SPTRTELS Index","SPTR5TCH Index","SPTRCOND Index","SPTRFINL Index","SPTRINDU Index","SPTR5MA Index","SPTRENRS Index"),
+                                 c("Staples","Health Care","Utilities","Telcos","Tech","Cons Discr","Industrials","Financials","Materials","Energy")),stringsAsFactors=F)
+names(us_glossary)<-c("id","names")
+
+eqw<-as.data.frame(t(as.data.frame(tail(dfws[,-"date"],1)/head(dfws[,-"date"],1)-1)))
+eqw$id<-rownames(eqw)
+eqw<-merge(eqw,us_glossary,by="id")
+eqw$colors<-ifelse(eqw$id %in% def,col_aq[1],col_aq[2])
+
+p9<-
+  eqw %>%
+  mutate(names = fct_reorder(names, desc(-V1))) %>%
+  ggplot( aes(x=names, y=V1)) +
+  geom_bar(stat="identity", fill=eqw$colors, alpha=1, width=.4) +
+  coord_flip() +
+  xlab("") +
+  scale_colour_manual(values =col_aq[1] )+
+  scale_fill_manual(values=colors)+
+  theme_aq_black_default_font(base_size=20)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Sectors U.S.",subtitle="Last week's performance %",x ="")+
+  theme(plot.title.position = "plot")+
+  theme(plot.title = element_text(hjust = 0.05))+
+  theme(plot.subtitle = element_text(hjust = 0.06))+
+  labs(caption = '')+
+  xlab("")+
+  ylab("")+
+  #scale_y_continuous(labels = scales::percent_format(accuracy = 1))+
+  theme(legend.position = "none",legend.title = element_blank())+
+  theme(plot.margin=margin(l=5,r=10,b=5,t=5))+
+  scale_y_continuous(labels = scales::percent_format(accuracy = 0.1))
+p9
+
+ggsave(file=paste0(target_folder,"sectors_us_st_bar.svg"), plot=p9, width=6, height=6)
+
+
+
+#Government 10 Years
+cols <- c("U.S." = col_aq[1],"Germany" = col_aq[2],"Japan" = col_aq[3])
+dfw<-dcast(as.data.table(dfl[dfl$id %in% c("USGG10YR Index","GTDEM10YR Corp","GTJPY10YR Corp"),]), date ~ id, value.var = "px_last")
+#week_st<-as.Date(head(dfw$date[strftime(dfw$date, format = "%Y%V")==tail(strftime(dfw$date, format = "%Y%V"),1)],1))
+dfw<-na.locf(dfw)
+dfws<-dfw[dfw$date>=week_st,]
+
+p9<-
+  ggplot(data=dfw,aes(x=as.Date(date), y=`spx index`/head(`spx index`,1)))+
+  #add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  geom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=`USGG10YR Index`/100,color="U.S."))+
+  geom_line(size=1,aes(y=`GTDEM10YR Corp`/100,color="Germany"))+
+  geom_line(size=1,aes(y=`GTJPY10YR Corp`/100,color="Japan"))+
+  scale_colour_manual(values = cols)+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="10Yr Govt Yields",subtitle="%",x ="")+
+  labs(caption = paste0('Source: Bloomberg, Amadeus ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%y/%m"))+
+  theme(legend.position = "bottom",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))+
+  scale_y_continuous(labels = percent)
+p9
+
+ggsave(file=paste0(target_folder,"gov10yr_lt.svg"), plot=p9, width=10, height=5.5)
+
+p9<-
+  ggplot(data=dfws,aes(x=as.Date(date), y=`USGG10YR Index`))+
+  ##add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  #geom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=`USGG10YR Index`/100,color="U.S."))+
+  geom_line(size=1,aes(y=`GTDEM10YR Corp`/100,color="Germany"))+
+  geom_line(size=1,aes(y=`GTJPY10YR Corp`/100,color="Japan"))+
+  geom_point(size=3,aes(y=`USGG10YR Index`/100,color="U.S."))+
+  geom_point(size=3,aes(y=`GTDEM10YR Corp`/100,color="Germany"))+
+  geom_point(size=3,aes(y=`GTJPY10YR Corp`/100,color="Japan"))+
+  scale_colour_manual(values = cols)+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="10Yr Govt Yields",subtitle="%",x ="")+
+  labs(caption = paste0('Source: Amadeus Capital SA ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%m/%d"))+
+  theme(legend.position = "bottom",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))+
+  scale_y_continuous(labels = percent)
+p9
+
+
+p9<-
+  ydt_wtd_bar_function(dfl,
+                       month_st=week_st,
+                       tickers=c("USGG10YR Index","GTDEM10YR Corp","GTJPY10YR Corp"),
+                       names=c("U.S.","Germany","Japan"),
+                       mnemonic="px_last",
+                       calculation="delta",
+                       chart_title="10Yr Govt Yields",
+                       chart_subtitle="Delta in %")
+p9
+
+
+ggsave(file=paste0(target_folder,"gov10yr_st.svg"), plot=p9, width=6, height=5.5)
+
+
+#Government 2 Years
+cols <- c("U.S." = col_aq[1],"Germany" = col_aq[2],"Japan" = col_aq[3])
+dfw<-dcast(as.data.table(dfl[dfl$id %in% c("USGG2YR Index","GTDEM2YR Corp","GTJPY2YR Corp"),]), date ~ id, value.var = "px_last")
+#week_st<-as.Date(head(dfw$date[strftime(dfw$date, format = "%Y%V")==tail(strftime(dfw$date, format = "%Y%V"),1)],1))
+dfw<-na.locf(dfw)
+dfws<-dfw[dfw$date>=week_st,]
+
+p9<-
+  ggplot(data=dfw,aes(x=as.Date(date), y=`spx index`/head(`spx index`,1)))+
+  #add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  geom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=`USGG2YR Index`/100,color="U.S."))+
+  geom_line(size=1,aes(y=`GTDEM2YR Corp`/100,color="Germany"))+
+  geom_line(size=1,aes(y=`GTJPY2YR Corp`/100,color="Japan"))+
+  scale_colour_manual(values = cols)+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="2Yr Govt Yields",subtitle="%",x ="")+
+  labs(caption = paste0('Source: Bloomberg, Amadeus ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%y/%m"))+
+  theme(legend.position = "bottom",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))+
+  scale_y_continuous(labels = percent)
+p9
+
+ggsave(file=paste0(target_folder,"gov2yr_lt.svg"), plot=p9, width=10, height=5.5)
+
+
+
+p9<-
+  ggplot(data=dfws,aes(x=as.Date(date), y=`USGG10YR Index`))+
+  #add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  #eom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=`USGG2YR Index`/100,color="U.S."))+
+  geom_line(size=1,aes(y=`GTDEM2YR Corp`/100,color="Germany"))+
+  geom_line(size=1,aes(y=`GTJPY2YR Corp`/100,color="Japan"))+
+  geom_point(size=3,aes(y=`USGG2YR Index`/100,color="U.S."))+
+  geom_point(size=3,aes(y=`GTDEM2YR Corp`/100,color="Germany"))+
+  geom_point(size=3,aes(y=`GTJPY2YR Corp`/100,color="Japan"))+
+  scale_colour_manual(values = cols)+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="2Yr Govt Yields",subtitle="%",x ="")+
+  labs(caption = paste0('Source: Amadeus Capital SA ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%m/%d"))+
+  theme(legend.position = "bottom",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))+
+  scale_y_continuous(labels = percent)
+p9
+
+
+p9<-
+  ydt_wtd_bar_function(dfl,
+                       month_st=week_st,
+                       tickers=c("USGG2YR Index","GTDEM2YR Corp","GTJPY2YR Corp"),
+                       names=c("U.S.","Germany","Japan"),
+                       mnemonic="px_last",
+                       calculation="delta",
+                       chart_title="10Yr Govt Yields",
+                       chart_subtitle="Delta in %")
+p9
+
+ggsave(file=paste0(target_folder,"gov2yr_st.svg"), plot=p9, width=6, height=5.5)
+
+
+#Government Curve
+cols <- c("U.S." = col_aq[1],"Germany" = col_aq[2],"Japan" = col_aq[3])
+dfw<-dcast(as.data.table(dfl[dfl$id %in% c("USGG10YR Index","GTDEM10YR Corp","GTJPY10YR Corp","USGG2YR Index","GTDEM2YR Corp","GTJPY2YR Corp"),]), date ~ id, value.var = "px_last")
+#week_st<-as.Date(head(dfw$date[strftime(dfw$date, format = "%Y%V")==tail(strftime(dfw$date, format = "%Y%V"),1)],1))
+dfw<-na.locf(dfw)
+dfws<-dfw[dfw$date>=week_st,]
+p9<-
+  ggplot(data=dfw,aes(x=as.Date(date), y=`USGG10YR Index`))+
+  #add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  geom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=(`USGG10YR Index`-`USGG2YR Index`)/100,color="U.S."))+
+  geom_line(size=1,aes(y=(`GTDEM10YR Corp`-`GTDEM2YR Corp`)/100,color="Germany"))+
+  geom_line(size=1,aes(y=(`GTJPY10YR Corp`-`GTJPY2YR Corp`)/100,color="Japan"))+
+  scale_colour_manual(values = cols)+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Steepness of the curve",subtitle="10Yr - 2Yr Govt Yields %",x ="")+
+  labs(caption = paste0('Source: Amadeus Capital SA ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%y/%m"))+
+  theme(legend.position = "bottom",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))+
+  scale_y_continuous(labels = percent)
+p9
+
+ggsave(file=paste0(target_folder,"steepness_lt.svg"), plot=p9, width=10, height=5.5)
+
+
+p9<-
+  ggplot(data=dfws,aes(x=as.Date(date), y=`USGG10YR Index`))+
+  ##add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  #eom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=(`USGG10YR Index`-`USGG2YR Index`)/100,color="U.S."))+
+  geom_line(size=1,aes(y=(`GTDEM10YR Corp`-`GTDEM2YR Corp`)/100,color="Germany"))+
+  geom_line(size=1,aes(y=(`GTJPY10YR Corp`-`GTJPY2YR Corp`)/100,color="Japan"))+
+  geom_point(size=3,aes(y=(`USGG10YR Index`-`USGG2YR Index`)/100,color="U.S."))+
+  geom_point(size=3,aes(y=(`GTDEM10YR Corp`-`GTDEM2YR Corp`)/100,color="Germany"))+
+  geom_point(size=3,aes(y=(`GTJPY10YR Corp`-`GTJPY2YR Corp`)/100,color="Japan"))+
+  scale_colour_manual(values = cols)+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Steepness of the curve",subtitle="10Yr - 2Yr Govt Yields %",x ="")+
+  labs(caption = paste0('Source: Amadeus Capital SA ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%m/%d"))+
+  theme(legend.position = "bottom",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))+
+  scale_y_continuous(labels = percent)
+p9
+
+
+dfw$steepness_us<-(dfw$`USGG10YR Index`-dfw$`USGG2YR Index`)*100
+dfw$steepness_ez<-(dfw$`GTDEM10YR Corp`-dfw$`GTDEM2YR Corp`)*100
+dfw$steepness_jp<-(dfw$`GTJPY10YR Corp`-dfw$`GTJPY2YR Corp`)*100
+dfl1<-melt(dfw)
+dfl1$id<-dfl1$variable
+
+p9<-
+  ydt_wtd_bar_function(dfl1,
+                       month_st=week_st,
+                       tickers=c("steepness_us","steepness_ez","steepness_jp"),
+                       names=c("U.S.","Germany","Japan"),
+                       mnemonic="value",
+                       calculation="delta",
+                       chart_title="10Yr Govt Yields",
+                       chart_subtitle="Delta in bp")
+p9
+
+
+
+ggsave(file=paste0(target_folder,"steepness_st.svg"), plot=p9, width=6, height=5.5)
+
+#Government Germany
+cols <- c("2Yr" = col_aq[1],"10Yr" = col_aq[2])
+dfw<-dcast(as.data.table(dfl[dfl$id %in% c("GTDEM2YR Corp","GTDEM10YR Corp"),]), date ~ id, value.var = "px_last")
+#week_st<-as.Date(head(dfw$date[strftime(dfw$date, format = "%Y%V")==tail(strftime(dfw$date, format = "%Y%V"),1)],1))
+dfw<-na.locf(dfw)
+dfws<-dfw[dfw$date>=week_st,]
+
+p9<-
+  ggplot(data=dfw,aes(x=as.Date(date), y=`GTDEM2YR Corp`))+
+  ##add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  geom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=`GTDEM2YR Corp`/100,color="2Yr"))+
+  geom_line(size=1,aes(y=`GTDEM10YR Corp`/100,color="10Yr"))+
+  scale_colour_manual(values = cols)+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Govt Bond Yields Germany",subtitle="%",x ="")+
+  labs(caption = paste0('Source: Bloomberg, Amadeus ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%y/%m"))+
+  theme(legend.position = "bottom",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))+
+  scale_y_continuous(labels = percent)
+p9
+
+ggsave(file=paste0(target_folder,"gov_germany_lt.svg"), plot=p9, width=10, height=5.5)
+
+p9<-
+  ggplot(data=dfws,aes(x=as.Date(date), y=`USGG10YR Index`))+
+  ##add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  #eom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=`GTDEM2YR Corp`/100,color="2Yr"))+
+  geom_line(size=1,aes(y=`GTDEM10YR Corp`/100,color="10Yr"))+
+  geom_point(size=3,aes(y=`GTDEM2YR Corp`/100,color="2Yr"))+
+  geom_point(size=3,aes(y=`GTDEM10YR Corp`/100,color="10Yr"))+
+  scale_colour_manual(values = cols)+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Govt Bond Yields Germany",subtitle="%",x ="")+
+  labs(caption = paste0('Source: Amadeus Capital SA ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%m/%d"))+
+  theme(legend.position = "bottom",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))+
+  scale_y_continuous(labels = percent)
+p9
+
+
+ggsave(file=paste0(target_folder,"gov_germany_st.svg"), plot=p9, width=6, height=5.5)
+
+#Government United States
+cols <- c("2Yr" = col_aq[1],"10Yr" = col_aq[2])
+dfw<-dcast(as.data.table(dfl[dfl$id %in% c("USGG2YR Index","USGG10YR Index"),]), date ~ id, value.var = "px_last")
+#week_st<-as.Date(head(dfw$date[strftime(dfw$date, format = "%Y%V")==tail(strftime(dfw$date, format = "%Y%V"),1)],1))
+dfw<-na.locf(dfw)
+dfws<-dfw[dfw$date>=week_st,]
+
+p9<-
+  ggplot(data=dfw,aes(x=as.Date(date), y=`USGG2YR Index`))+
+  ##add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  geom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=`USGG2YR Index`/100,color="2Yr"))+
+  geom_line(size=1,aes(y=`USGG10YR Index`/100,color="10Yr"))+
+  scale_colour_manual(values = cols)+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Govt Bond Yields Germany",subtitle="%",x ="")+
+  labs(caption = paste0('Source: Bloomberg, Amadeus ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%y/%m"))+
+  theme(legend.position = "bottom",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))+
+  scale_y_continuous(labels = percent)
+p9
+
+ggsave(file=paste0(target_folder,"gov_us_lt.svg"), plot=p9, width=10, height=5.5)
+
+p9<-
+  ggplot(data=dfws,aes(x=as.Date(date), y=`USGG10YR Index`))+
+  ##add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  #eom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=`USGG2YR Index`/100,color="2Yr"))+
+  geom_line(size=1,aes(y=`USGG10YR Index`/100,color="10Yr"))+
+  geom_point(size=3,aes(y=`USGG2YR Index`/100,color="2Yr"))+
+  geom_point(size=3,aes(y=`USGG10YR Index`/100,color="10Yr"))+
+  scale_colour_manual(values = cols)+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Govt Bond Yields Germany",subtitle="%",x ="")+
+  labs(caption = paste0('Source: Amadeus Capital SA ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%m/%d"))+
+  theme(legend.position = "bottom",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))+
+  scale_y_continuous(labels = percent)
+p9
+
+ggsave(file=paste0(target_folder,"gov_us_st.svg"), plot=p9, width=6, height=5.5)
+
+
+
+
+
+#Credit Spreads
+cols <- c("U.S. IG" = col_aq[1],"EUR IG" = col_aq[2])
+dfw<-dcast(as.data.table(dfl[dfl$id %in% c("CDX HY CDSI GEN 5Y SPRD Corp","CDX IG CDSI GEN 5Y Corp","ITRX XOVER CDSI GEN 5Y Corp","ITRX EUR CDSI GEN 5Y Corp"),]), date ~ id, value.var = "px_last")
+dfw<-na.locf(dfw)
+#week_st<-as.Date(head(dfw$date[strftime(dfw$date, format = "%Y%V")==tail(strftime(dfw$date, format = "%Y%V"),1)],1))
+
+dfws<-dfw[dfw$date>=week_st,]
+p9<-
+  ggplot(data=dfw,aes(x=as.Date(date), y=`USGG10YR Index`))+
+  #add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  geom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=(`CDX IG CDSI GEN 5Y Corp`),color="U.S. IG"))+
+  geom_line(size=1,aes(y=(`ITRX EUR CDSI GEN 5Y Corp`),color="EUR IG"))+
+  scale_colour_manual(values = cols)+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Investment grade credit spreads",subtitle="Spread in basis points",x ="")+
+  labs(caption = paste0('Source: Amadeus Capital SA ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%y/%m"))+
+  theme(legend.position = "bottom",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))
+  #scale_y_continuous(labels = percent)
+p9
+
+ggsave(file=paste0(target_folder,"ig_lt.svg"), plot=p9, width=10, height=5.5)
+
+
+p9<-
+  ggplot(data=dfws,aes(x=as.Date(date), y=`USGG10YR Index`))+
+  ##add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  #eom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=(`CDX IG CDSI GEN 5Y Corp`),color="U.S. IG"))+
+  geom_line(size=1,aes(y=(`ITRX EUR CDSI GEN 5Y Corp`),color="EUR IG"))+
+  geom_point(size=3,aes(y=(`CDX IG CDSI GEN 5Y Corp`),color="U.S. IG"))+
+  geom_point(size=3,aes(y=(`ITRX EUR CDSI GEN 5Y Corp`),color="EUR IG"))+
+  scale_colour_manual(values = cols)+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Investment grade credit spreads",subtitle="Spread in basis points",x ="")+
+  labs(caption = paste0('Source: Amadeus Capital SA ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%m/%d"))+
+  theme(legend.position = "bottom",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))
+#scale_y_continuous(labels = percent)
+p9
+
+#dfl$bp<-dfl$px_last*100
+#p9<-
+#  ydt_wtd_bar_function(dfl,
+#                       month_st=week_st,
+#                       tickers=c("CDX IG CDSI GEN 5Y Corp","ITRX EUR CDSI GEN 5Y Corp"),
+#                       names=c("U.S. IG","EUR IG"),
+#                       mnemonic="bp",
+#                       calculation="delta",
+#                       chart_title="Investment grade credit spreads",
+#                       chart_subtitle="Delta in bp")
+#p9
+
+
+
+ggsave(file=paste0(target_folder,"ig_st.svg"), plot=p9, width=6, height=5.5)
+
+
+#Credit Spreads High Yield
+cols <- c("U.S. HY" = col_aq[1],"EUR Crossover" = col_aq[2])
+dfw<-dcast(as.data.table(dfl[dfl$id %in% c("CDX HY CDSI GEN 5Y SPRD Corp","CDX IG CDSI GEN 5Y Corp","ITRX XOVER CDSI GEN 5Y Corp","ITRX EUR CDSI GEN 5Y Corp"),]), date ~ id, value.var = "px_last")
+#week_st<-as.Date(head(dfw$date[strftime(dfw$date, format = "%Y%V")==tail(strftime(dfw$date, format = "%Y%V"),1)],1))
+dfw<-na.locf(dfw)
+
+
+dfws<-dfw[dfw$date>=week_st,]
+p9<-
+  ggplot(data=dfw,aes(x=as.Date(date), y=`ITRX XOVER CDSI GEN 5Y Corp`))+
+  #add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  geom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=(`CDX HY CDSI GEN 5Y SPRD Corp`),color="U.S. HY"))+
+  geom_line(size=1,aes(y=(`ITRX XOVER CDSI GEN 5Y Corp`),color="EUR Crossover"))+
+  scale_colour_manual(values = cols)+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="High yield credit spreads",subtitle="Spread in basis points",x ="")+
+  labs(caption = paste0('Source: Amadeus Capital SA ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%y/%m"))+
+  theme(legend.position = "bottom",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))
+#scale_y_continuous(labels = percent)
+p9
+
+ggsave(file=paste0(target_folder,"hy_lt.svg"), plot=p9, width=10, height=5.5)
+
+
+p9<-
+  ggplot(data=dfws,aes(x=as.Date(date), y=`USGG10YR Index`))+
+  ##add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  #eom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=(`CDX HY CDSI GEN 5Y SPRD Corp`),color="U.S. HY"))+
+  geom_line(size=1,aes(y=(`ITRX XOVER CDSI GEN 5Y Corp`),color="EUR Crossover"))+
+  geom_point(size=3,aes(y=(`CDX HY CDSI GEN 5Y SPRD Corp`),color="U.S. HY"))+
+  geom_point(size=3,aes(y=(`ITRX XOVER CDSI GEN 5Y Corp`),color="EUR Crossover"))+
+  scale_colour_manual(values = cols)+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="High yield credit spreads",subtitle="Spread in basis points",x ="")+
+  labs(caption = paste0('Source: Amadeus Capital SA ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%m/%d"))+
+  theme(legend.position = "bottom",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))
+#scale_y_continuous(labels = percent)
+p9
+
+ggsave(file=paste0(target_folder,"hy_st.svg"), plot=p9, width=6, height=5.5)
+
+
+#Commodities
+cols <- c("Gold" = col_aq[1],"Silver" = col_aq[2])
+dfw<-dcast(as.data.table(dfl[dfl$id %in% c("XAU BGN Curncy","XAG BGN Curncy"),]), date ~ id, value.var = "px_last")
+#week_st<-as.Date(head(dfw$date[strftime(dfw$date, format = "%Y%V")==tail(strftime(dfw$date, format = "%Y%V"),1)],1))
+dfw<-na.locf(dfw)
+
+
+dfws<-dfw[dfw$date>=week_st,]
+p9<-
+  ggplot(data=dfw,aes(x=as.Date(date), y=`XAU BGN Curncy`))+
+  #add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  geom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=(`XAU BGN Curncy`)/head(`XAU BGN Curncy`,1)-1,color="Gold"))+
+  geom_line(size=1,aes(y=(`XAG BGN Curncy`)/head(`XAG BGN Curncy`,1)-1,color="Silver"))+
+  scale_colour_manual(values = cols)+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Precious metals",subtitle="Price change %",x ="")+
+  labs(caption = paste0('Source: Amadeus Capital SA ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%y/%m"))+
+  theme(legend.position = "bottom",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))+
+  scale_y_continuous(labels = percent)
+p9
+
+ggsave(file=paste0(target_folder,"gold_silver_lt.svg"), plot=p9, width=10, height=5.5)
+
+
+p9<-
+  ggplot(data=dfws,aes(x=as.Date(date), y=`XAU BGN Curncy`))+
+  ##add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  #eom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=(`XAU BGN Curncy`)/head(`XAU BGN Curncy`,1)-1,color="Gold"))+
+  geom_line(size=1,aes(y=(`XAG BGN Curncy`)/head(`XAG BGN Curncy`,1)-1,color="Silver"))+
+  geom_point(size=3,aes(y=(`XAU BGN Curncy`)/head(`XAU BGN Curncy`,1)-1,color="Gold"))+
+  geom_point(size=3,aes(y=(`XAG BGN Curncy`)/head(`XAG BGN Curncy`,1)-1,color="Silver"))+
+  scale_colour_manual(values = cols)+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Precious metals",subtitle="Price change %",x ="")+
+  labs(caption = paste0('Source: Amadeus Capital SA ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%m/%d"))+
+  theme(legend.position = "bottom",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))+
+  scale_y_continuous(labels = percent)
+p9
+
+p9<-
+  ydt_wtd_bar_function(dfl,
+                       month_st=week_st,
+                       tickers=c("XAU BGN Curncy","XAG BGN Curncy"),
+                       names=c("Gold","Silver"),
+                       mnemonic="px_last",
+                       calculation="delta",
+                       chart_title="Precious metals",
+                       chart_subtitle="Price change in USD")
+p9
+
+
+
+
+ggsave(file=paste0(target_folder,"gold_silver_st.svg"), plot=p9, width=6, height=5.5)
+
+
+#Oil
+cols <- c("Oil" = col_aq[1])
+dfw<-dcast(as.data.table(dfl[dfl$id %in% c("CL1 COMB Comdty"),]), date ~ id, value.var = "px_last")
+#week_st<-as.Date(head(dfw$date[strftime(dfw$date, format = "%Y%V")==tail(strftime(dfw$date, format = "%Y%V"),1)],1))
+dfw<-na.locf(dfw)
+
+
+dfws<-dfw[dfw$date>=week_st,]
+p9<-
+  ggplot(data=dfw,aes(x=as.Date(date), y=`CL1 COMB Comdty`))+
+  #add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  geom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=(`CL1 COMB Comdty`),color="Oil"))+
+  scale_colour_manual(values = cols)+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Crude oil",subtitle="Price in USD",x ="")+
+  labs(caption = paste0('Source: Amadeus Capital SA ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%y/%m"))+
+  theme(legend.position = "none",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))
+  #scale_y_continuous(labels = percent)
+p9
+
+ggsave(file=paste0(target_folder,"oil_lt.svg"), plot=p9, width=10, height=5.5)
+
+
+p9<-
+  ggplot(data=dfws,aes(x=as.Date(date), y=`CL1 COMB Comdty`))+
+  ##add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  #eom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=(`CL1 COMB Comdty`),color="Oil"))+
+  geom_point(size=3,aes(y=(`CL1 COMB Comdty`),color="Oil"))+
+  scale_colour_manual(values = cols)+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Crude oil",subtitle="Price in USD",x ="")+
+  labs(caption = paste0('Source: Amadeus Capital SA ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%m/%d"))+
+  theme(legend.position = "none",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))
+  #scale_y_continuous(labels = percent)
+p9
+
+
+ggsave(file=paste0(target_folder,"oil_st.svg"), plot=p9, width=6, height=5.5)
+
+
+
+
+#Currencies
+cols <- c("USD" = col_aq[1],"EUR" = col_aq[2],"CHF" = col_aq[3],"GBP" = col_aq[4])
+dfw<-dcast(as.data.table(dfl[dfl$id %in% c("TWI USSP Index","TWI SFSP Index","TWI EUSP Index","TWI BPSP Index"),]), date ~ id, value.var = "px_last")
+#week_st<-as.Date(head(dfw$date[strftime(dfw$date, format = "%Y%V")==tail(strftime(dfw$date, format = "%Y%V"),1)],1))
+dfw<-na.locf(dfw)
+
+dfws<-dfw[dfw$date>=week_st,]
+p9<-
+  ggplot(data=dfw,aes(x=as.Date(date), y=`TWI USSP Index`))+
+  #add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  geom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=(`TWI USSP Index`)/head((`TWI USSP Index`),1)-1,color="USD"))+
+  geom_line(size=1,aes(y=(`TWI EUSP Index`)/head((`TWI EUSP Index`),1)-1,color="EUR"))+
+  geom_line(size=1,aes(y=(`TWI SFSP Index`)/head((`TWI SFSP Index`),1)-1,color="CHF"))+
+  geom_line(size=1,aes(y=(`TWI BPSP Index`)/head((`TWI BPSP Index`),1)-1,color="GBP"))+
+  scale_colour_manual(values = cols)+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Trade weighted currencies",subtitle="Price change %",x ="")+
+  labs(caption = paste0('Source: Amadeus Capital SA ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%y/%m"))+
+  theme(legend.position = "bottom",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))+
+  scale_y_continuous(labels = percent)
+p9
+
+ggsave(file=paste0(target_folder,"currencies_lt.svg"), plot=p9, width=10, height=5.5)
+
+
+p9<-
+  ggplot(data=dfws,aes(x=as.Date(date), y=`TWI USSP Index`))+
+  ##add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  #eom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=(`TWI USSP Index`)/head((`TWI USSP Index`),1)-1,color="USD"))+
+  geom_line(size=1,aes(y=(`TWI EUSP Index`)/head((`TWI EUSP Index`),1)-1,color="EUR"))+
+  geom_line(size=1,aes(y=(`TWI SFSP Index`)/head((`TWI SFSP Index`),1)-1,color="CHF"))+
+  geom_line(size=1,aes(y=(`TWI BPSP Index`)/head((`TWI BPSP Index`),1)-1,color="GBP"))+
+  geom_point(size=3,aes(y=(`TWI USSP Index`)/head((`TWI USSP Index`),1)-1,color="USD"))+
+  geom_point(size=3,aes(y=(`TWI EUSP Index`)/head((`TWI EUSP Index`),1)-1,color="EUR"))+
+  geom_point(size=3,aes(y=(`TWI SFSP Index`)/head((`TWI SFSP Index`),1)-1,color="CHF"))+
+  geom_point(size=3,aes(y=(`TWI BPSP Index`)/head((`TWI BPSP Index`),1)-1,color="GBP"))+
+  scale_colour_manual(values = cols)+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Trade weighted currencies",subtitle="Price change %",x ="")+
+  labs(caption = paste0('Source: Amadeus Capital SA ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%m/%d"))+
+  theme(legend.position = "bottom",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))+
+  scale_y_continuous(labels = percent)
+p9
+
+
+p9<-
+  ydt_wtd_bar_function(dfl,
+                       month_st=week_st,
+                       tickers=c("TWI USSP Index","TWI SFSP Index","TWI EUSP Index","TWI BPSP Index"),
+                       names=c("USD","EUR","CHF","GBP"),
+                       mnemonic="px_last",
+                       calculation="gain",
+                       chart_title="Trade weighted currencies",
+                       chart_subtitle="Price change %")
+p9
+
+
+ggsave(file=paste0(target_folder,"currencies_st.svg"), plot=p9, width=6, height=5.5)
+
+
+#Crypto
+cols <- c("Bitcoin" = col_aq[1],"Ether" = col_aq[2],"Solana" = col_aq[3])
+dfw<-dcast(as.data.table(dfl[dfl$id %in% c("XBTUSD BGN Curncy","XETUSD BGN Curncy","CMBISOLL Index"),]), date ~ id, value.var = "px_last")
+#week_st<-as.Date(head(dfw$date[strftime(dfw$date, format = "%Y%V")==tail(strftime(dfw$date, format = "%Y%V"),1)],1))
+dfw<-na.locf(dfw)
+
+dfws<-dfw[dfw$date>=week_st,]
+p9<-
+  ggplot(data=dfw,aes(x=as.Date(date), y=`XBTUSD BGN Curncy`))+
+  #add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  geom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=(`XBTUSD BGN Curncy`)/head((`XBTUSD BGN Curncy`),1)-1,color="Bitcoin"))+
+  geom_line(size=1,aes(y=(`XETUSD BGN Curncy`)/head((`XETUSD BGN Curncy`),1)-1,color="Ether"))+
+  geom_line(size=1,aes(y=(`CMBISOLL Index`)/head((`CMBISOLL Index`),1)-1,color="Solana"))+
+  scale_colour_manual(values = cols)+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Marjor cryptocurrencies in USD",subtitle="Price change %",x ="")+
+  labs(caption = paste0('Source: Amadeus Capital SA ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%y/%m"))+
+  theme(legend.position = "bottom",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))+
+  scale_y_continuous(labels = percent)
+p9
+
+ggsave(file=paste0(target_folder,"crypto_lt.svg"), plot=p9, width=10, height=5.5)
+
+p9<-
+  ggplot(data=dfws,aes(x=as.Date(date), y=`XBTUSD BGN Curncy`))+
+  #add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  #eom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=(`XBTUSD BGN Curncy`)/head((`XBTUSD BGN Curncy`),1)-1,color="Bitcoin"))+
+  geom_line(size=1,aes(y=(`XETUSD BGN Curncy`)/head((`XETUSD BGN Curncy`),1)-1,color="Ether"))+
+  geom_line(size=1,aes(y=(`CMBISOLL Index`)/head((`CMBISOLL Index`),1)-1,color="Solana"))+
+  geom_point(size=3,aes(y=(`XBTUSD BGN Curncy`)/head((`XBTUSD BGN Curncy`),1)-1,color="Bitcoin"))+
+  geom_point(size=3,aes(y=(`XETUSD BGN Curncy`)/head((`XETUSD BGN Curncy`),1)-1,color="Ether"))+
+  geom_point(size=3,aes(y=(`CMBISOLL Index`)/head((`CMBISOLL Index`),1)-1,color="Solana"))+
+  scale_colour_manual(values = cols)+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Major cryptocurrencies in USD",subtitle="Price change %",x ="")+
+  labs(caption = paste0('Source: Amadeus Capital SA ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%m/%d"))+
+  theme(legend.position = "bottom",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))+
+  scale_y_continuous(labels = percent)
+p9
+
+p9<-
+  ydt_wtd_bar_function(dfl,
+                       month_st=week_st,
+                       tickers=c("XBTUSD BGN Curncy","XETUSD BGN Curncy","CMBISOLL Index"),
+                       names=c("Bitcon","Ether","Solana"),
+                       mnemonic="px_last",
+                       calculation="gain",
+                       chart_title="Major cryptocurrencies in USD",
+                       chart_subtitle="Price change %")
+p9
+
+
+ggsave(file=paste0(target_folder,"crypto_st.svg"), plot=p9, width=6, height=5.5)
+
+#Volatility
+cols <- c("S&P 500" = col_aq[1],"EURO STOXX" = col_aq[2])
+dfw<-dcast(as.data.table(dfl[dfl$id %in% c("VIX Index","V2X Index"),]), date ~ id, value.var = "px_last")
+#week_st<-as.Date(head(dfw$date[strftime(dfw$date, format = "%Y%V")==tail(strftime(dfw$date, format = "%Y%V"),1)],1))
+dfw<-na.locf(dfw)
+
+
+dfws<-dfw[dfw$date>=week_st,]
+p9<-
+  ggplot(data=dfw,aes(x=as.Date(date), y=`CL1 COMB Comdty`))+
+  #add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  geom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=(`VIX Index`),color="S&P 500"))+
+  geom_line(size=1,aes(y=(`V2X Index`),color="EURO STOXX"))+
+  scale_colour_manual(values = cols)+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Volatility",subtitle="Implied volatility in %",x ="")+
+  labs(caption = paste0('Source: Amadeus Capital SA ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%y/%m"))+
+  theme(legend.position = "bottom",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))
+  #scale_y_continuous(labels = percent)
+p9
+ggsave(file=paste0(target_folder,"vola_lt.svg"), plot=p9, width=10, height=5.5)
+
+p9<-
+  ggplot(data=dfws,aes(x=as.Date(date), y=`CL1 COMB Comdty`))+
+  ##add_rec_shade(as.Date(min(dfw$date)),as.Date(Sys.Date()))+
+  #eom_vline(color = "grey",xintercept = week_st)+
+  geom_line(size=1,aes(y=(`VIX Index`),color="S&P 500"))+
+  geom_line(size=1,aes(y=(`V2X Index`),color="EURO STOXX"))+
+  geom_point(size=3,aes(y=(`VIX Index`),color="S&P 500"))+
+  geom_point(size=3,aes(y=(`V2X Index`),color="EURO STOXX"))+
+  scale_colour_manual(values = cols)+
+  theme_aq_black_default_font(base_size=18)+
+  #size 22 for overleaf
+  labs(color='')+
+  labs(title="Volatility",subtitle="Implied volatility in %",x ="")+
+  labs(caption = paste0('Source: Amadeus Capital SA ', Sys.Date()))+
+  guides(colour = guide_legend(nrow = 1))+
+  scale_x_date(labels = date_format("%m/%d"))+
+  theme(legend.position = "bottom",legend.margin=margin(-20,-20,-20,-20),legend.box.margin=margin(0,0,30,0))+
+  ylab("")+
+  theme(plot.margin=margin(l=5,r=20,b=5,t=5))
+#scale_y_continuous(labels = percent)
+p9
+
+
+ggsave(file=paste0(target_folder,"vola_st.svg"), plot=p9, width=6, height=5.5)
+
+
