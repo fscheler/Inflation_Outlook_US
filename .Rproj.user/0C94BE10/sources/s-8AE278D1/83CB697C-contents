@@ -1,0 +1,36 @@
+
+
+#install.packages("OECD")
+library('OECD')
+
+search_dataset("CPI", data = get_datasets(), ignore.case = TRUE)
+
+df <- get_dataset("PRICES_CPI",start_time = 2008, end_time = 2010)
+View(df)
+
+df <- get_dataset("EPL_OV")
+
+
+https://data.oecd.org/chart/6GPs
+
+
+library(plotly)
+df <- read.csv("https://raw.githubusercontent.com/plotly/datasets/master/2011_us_ag_exports.csv")
+df$hover <- with(df, paste(state, '<br>', "Beef", beef, "Dairy", dairy, "<br>",
+                           "Fruits", total.fruits, "Veggies", total.veggies,
+                           "<br>", "Wheat", wheat, "Corn", corn))
+
+fig <- plot_geo(df, locationmode = 'USA-states')
+fig <- fig %>% add_trace(
+  z = ~total.exports, text = ~hover, locations = ~code,
+  color = ~total.exports, colors = 'Purples'
+)
+fig <- fig %>% colorbar(title = "Millions USD")
+fig <- fig %>% layout(
+  title = '2011 US Agriculture Exports by State<br>(Hover for breakdown)'
+)
+
+fig
+
+
+https://thedocs.worldbank.org/en/doc/1ad246272dbbc437c74323719506aa0c-0350012021/related/Commodity-price-database.zip

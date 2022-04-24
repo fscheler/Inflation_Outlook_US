@@ -138,15 +138,15 @@ htmlwidgets::saveWidget(as_widget(pyus), "C:/FS/quantamental_platform/Publicatio
 #Headline Inflation Forecast Eurozone
 #Compile Forecast
 #**********************************************************************
-df<-as.data.frame(dmonthly[dmonthly$id=='ECCPEMUY Index',c("date","px_last")])
+df<-as.data.frame(dmonthly[dmonthly$id=='ECCPEMUY Index' & !is.na(dmonthly$px_last),c("date","px_last")])
 df$date<-as.Date(as.yearmon(df$date), frac = 1)
-de<-as.data.frame(dmonthly[dmonthly$id=='CPEXEMUY Index',c("date","px_last")])
+de<-as.data.frame(dmonthly[dmonthly$id=='CPEXEMUY Index'& !is.na(dmonthly$px_last),c("date","px_last")])
 de$date<-as.Date(as.yearmon(de$date), frac = 1)
 df<-merge(df,de,by="date",all=T)
-de<-as.data.frame(dmonthly[dmonthly$id=='OILPHIST Index',c("date","px_last")])
+de<-as.data.frame(dmonthly[dmonthly$id=='OILPHIST Index'& !is.na(dmonthly$px_last),c("date","px_last")])
 de$date<-as.Date(as.yearmon(de$date), frac = 1)
 df<-merge(df,de,by="date",all=T)
-de<-as.data.frame(dmonthly[dmonthly$id=='EUR BGNL Curncy',c("date","px_last")])
+de<-as.data.frame(dmonthly[dmonthly$id=='EUR BGNL Curncy'& !is.na(dmonthly$px_last),c("date","px_last")])
 de$date<-as.Date(as.yearmon(de$date), frac = 1)
 df<-merge(df,de,by="date",all=T)
 names(df) <- c("date", "headline", "core", "oil", "fx")
@@ -180,9 +180,10 @@ for(i in (a+1):nrow(df))
   n<-n+1
 }
 #*****************************************
-#delete df$fx in case of USA
+#delete df$fx in case of USAF
 df$oil_fx_adj<-df$oil/df$fx
 #*****************************************
+
 df$oil_yoy<-(df$oil_fx_adj/lagpad(df$oil_fx_adj,k=12)-1)*100
 df$non_core_pce<-df$headline-df$core
 mean_oil<-mean(df$oil_yoy,na.rm=TRUE)
@@ -191,6 +192,7 @@ mean_non_core_pce<-mean(df$non_core_pce,na.rm=TRUE)
 sd_non_core_pce<-sd(df$non_core_pce,na.rm=TRUE)
 
 df$fnon_core<-((df$oil_yoy-mean_oil)/sd_oil)*sd_non_core_pce+mean_non_core_pce
+
 df$fheadline<-df$core+df$fnon_core
 
 df$core<-ifelse(is.na(df$headline),NA,df$core)
